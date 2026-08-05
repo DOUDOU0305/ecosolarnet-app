@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ECOSOLARNET</title>
+<meta name="theme-color" content="#0d6e64">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ECOSOLARNET">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="" class="brand-logo">
+      <span>ECOSOLARNET</span>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav class="tabbar">
+    <button data-route="dashboard" class="tab-btn active">
+      <span class="tab-icon">🏠</span><span>Accueil</span>
+    </button>
+    <button data-route="clients" class="tab-btn">
+      <span class="tab-icon">👤</span><span>Clients</span>
+    </button>
+    <button data-route="planning" class="tab-btn">
+      <span class="tab-icon">🗺️</span><span>Tournées</span>
+    </button>
+    <button data-route="devis" class="tab-btn">
+      <span class="tab-icon">📄</span><span>Devis</span>
+    </button>
+    <button data-route="settings" class="tab-btn">
+      <span class="tab-icon">⚙️</span><span>Réglages</span>
+    </button>
+  </nav>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/vendor/jspdf.umd.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
