@@ -1,11 +1,24 @@
-import { Store, getSettings } from "../db.js";
-import { escapeHtml } from "../toast.js";
+import { Store, getSettings, saveSettings } from "../db.js";
+import { escapeHtml, showToast } from "../toast.js";
+import { getActiveTimer, startVisit, stopVisit, onTimerEvent, startAutoWatch, stopAutoWatch, formatDuration } from "../timer.js";
 
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
 }
 
+let elapsedIntervalId = null;
+let unsubscribeTimer = null;
+
 export async function render(container) {
+  if (unsubscribeTimer) {
+    unsubscribeTimer();
+    unsubscribeTimer = null;
+  }
+  if (elapsedIntervalId) {
+    clearInterval(elapsedIntervalId);
+    elapsedIntervalId = null;
+  }
+
   const settings = await getSettings();
   const clients = await Store.getAll("clients");
   const devisList = await Store.getAll("devis");
@@ -39,6 +52,16 @@ export async function render(container) {
     </div>
 
     <div class="card">
+      <h3 style="margin-top:0">Chronomètre</h3>
+      <div id="timer-zone"></div>
+      <div class="checkbox-row" style="margin-top:10px">
+        <input type="checkbox" id="auto-timer-toggle" ${settings.autoTimerEnabled ? "checked" : ""}>
+        <label for="auto-timer-toggle" style="margin:0;font-weight:400;color:var(--text)">Suivi automatique par GPS (tant que l'appli reste ouverte)</label>
+      </div>
+      <p class="muted" id="auto-timer-status" style="margin:6px 0 0"></p>
+    </div>
+
+    <div class="card">
       <div class="section-title-row">
         <h3 style="margin-top:0">Prochains jours planifiés</h3>
       </div>
@@ -63,4 +86,103 @@ export async function render(container) {
   container.querySelector("#qa-client").addEventListener("click", () => (location.hash = "#/clients/new"));
   container.querySelector("#qa-devis").addEventListener("click", () => (location.hash = "#/devis/new"));
   container.querySelector("#qa-planning").addEventListener("click", () => (location.hash = "#/planning"));
+
+  await renderTimerZone(container);
+
+  const autoStatus = container.querySelector("#auto-timer-status");
+  if (settings.autoTimerEnabled) {
+    autoStatus.textContent = "✅ Suivi automatique actif tant que l'appli reste ouverte.";
+  }
+
+  container.querySelector("#auto-timer-toggle").addEventListener("change", async (e) => {
+    const enabled = e.target.checked;
+    await saveSettings({ autoTimerEnabled: enabled });
+    if (enabled) {
+      autoStatus.textContent = "Activation du GPS…";
+      await startAutoWatch();
+      autoStatus.textContent = "✅ Suivi automatique actif tant que l'appli reste ouverte.";
+    } else {
+      stopAutoWatch();
+      autoStatus.textContent = "";
+    }
+  });
+
+  unsubscribeTimer = onTimerEvent((event, data) => {
+    if (event === "start" && data.auto) {
+      showToast(`Chrono démarré automatiquement : ${data.clientName}`);
+      renderTimerZone(container);
+    } else if (event === "stop") {
+      showToast(
+        data.auto
+          ? `Chrono arrêté automatiquement — ${formatDuration(data.durationSeconds)} chez ${data.clientName}`
+          : `Temps enregistré : ${formatDuration(data.durationSeconds)}`
+      );
+      renderTimerZone(container);
+    } else if (event === "error") {
+      showToast(data);
+    }
+  });
+}
+
+async function renderTimerZone(container) {
+  const zone = container.querySelector("#timer-zone");
+  if (!zone) return;
+  const active = await getActiveTimer();
+
+  if (active) {
+    zone.innerHTML = `
+      <div class="card-row">
+        <div>
+          <strong>${escapeHtml(active.clientName)}</strong>
+          <div class="muted" id="timer-elapsed">00:00:00</div>
+        </div>
+        <button class="btn danger" id="stop-timer-btn">⏹ Arrêter</button>
+      </div>
+      ${active.auto ? `<p class="muted" style="margin-top:6px">Démarré automatiquement par le GPS</p>` : ""}
+    `;
+
+    const updateElapsed = () => {
+      const el = document.getElementById("timer-elapsed");
+      if (!el) return;
+      const seconds = Math.floor((Date.now() - new Date(active.startTime).getTime()) / 1000);
+      el.textContent = formatDuration(seconds);
+    };
+    updateElapsed();
+    if (elapsedIntervalId) clearInterval(elapsedIntervalId);
+    elapsedIntervalId = setInterval(updateElapsed, 1000);
+
+    zone.querySelector("#stop-timer-btn").addEventListener("click", async () => {
+      clearInterval(elapsedIntervalId);
+      elapsedIntervalId = null;
+      const visit = await stopVisit();
+      if (visit) showToast(`Temps enregistré : ${formatDuration(visit.durationSeconds)}`);
+      await renderTimerZone(container);
+    });
+  } else {
+    if (elapsedIntervalId) {
+      clearInterval(elapsedIntervalId);
+      elapsedIntervalId = null;
+    }
+    const clients = await Store.getAll("clients");
+    clients.sort((a, b) => a.name.localeCompare(b.name));
+    zone.innerHTML = `
+      <div class="field">
+        <select id="timer-client-select">
+          <option value="">— Choisir un client —</option>
+          ${clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
+        </select>
+      </div>
+      <button class="btn block" id="start-timer-btn" ${clients.length === 0 ? "disabled" : ""}>▶ Démarrer</button>
+    `;
+    zone.querySelector("#start-timer-btn").addEventListener("click", async () => {
+      const id = zone.querySelector("#timer-client-select").value;
+      const client = clients.find((c) => c.id === id);
+      if (!client) {
+        showToast("Choisissez un client");
+        return;
+      }
+      await startVisit(client, false);
+      await renderTimerZone(container);
+    });
+  }
 }

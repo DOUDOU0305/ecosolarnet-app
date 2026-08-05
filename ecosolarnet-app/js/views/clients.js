@@ -1,6 +1,7 @@
 import { Store } from "../db.js";
 import { classifyRegion, geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
+import { formatDuration } from "../timer.js";
 
 const SERVICE_LABELS = {
   vitres: "Vitres",
@@ -35,6 +36,14 @@ export async function render(container, params) {
 async function renderList(container) {
   const clients = await Store.getAll("clients");
   clients.sort((a, b) => a.name.localeCompare(b.name));
+  const visits = await Store.getAll("visits");
+
+  function avgDurationFor(clientId) {
+    const list = visits.filter((v) => v.clientId === clientId);
+    if (list.length === 0) return null;
+    const avg = list.reduce((s, v) => s + v.durationSeconds, 0) / list.length;
+    return { avg, count: list.length };
+  }
 
   container.innerHTML = `
     <h1>Clients</h1>
@@ -45,7 +54,9 @@ async function renderList(container) {
       </div>
     ` : `
       <div class="card">
-        ${clients.map((c) => `
+        ${clients.map((c) => {
+          const t = avgDurationFor(c.id);
+          return `
           <div class="list-item" data-id="${c.id}">
             <div>
               <div><strong>${escapeHtml(c.name)}</strong></div>
@@ -55,9 +66,13 @@ async function renderList(container) {
                 ${(c.serviceTypes || []).map((s) => `<span class="pill" style="margin-left:4px">${SERVICE_LABELS[s] || s}</span>`).join("")}
               </div>
             </div>
-            <span style="color:var(--text-muted)">›</span>
+            <div style="text-align:right">
+              <span style="color:var(--text-muted)">›</span>
+              ${t ? `<div class="muted" style="font-size:11px;margin-top:4px">⏱ ${formatDuration(t.avg).slice(0, 5)}</div>` : ""}
+            </div>
           </div>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     `}
     <button class="fab" id="add-client-btn">+</button>
@@ -75,6 +90,9 @@ async function renderList(container) {
 
 async function renderForm(container, id) {
   const client = id ? await Store.get("clients", id) : null;
+  const visits = client ? (await Store.getAll("visits")).filter((v) => v.clientId === client.id) : [];
+  visits.sort((a, b) => b.startTime.localeCompare(a.startTime));
+  const avgSeconds = visits.length > 0 ? visits.reduce((s, v) => s + v.durationSeconds, 0) / visits.length : null;
 
   container.innerHTML = `
     <button class="back-btn" id="back-btn">‹ Retour</button>
@@ -137,6 +155,41 @@ async function renderForm(container, id) {
       <button type="submit" class="btn block">Enregistrer</button>
       ${client ? `<button type="button" id="delete-btn" class="btn danger block" style="margin-top:10px">Supprimer ce client</button>` : ""}
     </form>
+
+    ${client ? `
+      <div class="card">
+        <h3 style="margin-top:0">Temps passé chez ce client</h3>
+        ${visits.length > 0 ? `
+          <p class="muted">Moyenne : ${formatDuration(avgSeconds)} sur ${visits.length} passage${visits.length > 1 ? "s" : ""}</p>
+          ${visits.slice(0, 8).map((v) => `
+            <div class="list-item">
+              <span>${new Date(v.startTime).toLocaleDateString("fr-BE", { day: "numeric", month: "short", year: "numeric" })}${v.manual ? " (ajouté à la main)" : ""}</span>
+              <strong>${formatDuration(v.durationSeconds)}</strong>
+            </div>
+          `).join("")}
+        ` : `<p class="muted">Aucun temps enregistré pour l'instant.</p>`}
+
+        <h3 style="margin:16px 0 0">Ajouter un temps manuellement</h3>
+        <p class="muted">Pour un ancien passage, ou si vous avez oublié de lancer le chrono.</p>
+        <form id="manual-visit-form">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Heures</label>
+              <input type="number" name="hours" min="0" value="0">
+            </div>
+            <div class="field">
+              <label>Minutes</label>
+              <input type="number" name="minutes" min="0" max="59" value="30">
+            </div>
+          </div>
+          <button type="submit" class="btn secondary block">Ajouter ce temps</button>
+        </form>
+      </div>
+    ` : ""}
   `;
 
   container.querySelector("#back-btn").addEventListener("click", () => {
@@ -150,6 +203,31 @@ async function renderForm(container, id) {
         showToast("Client supprimé");
         location.hash = "#/clients";
       }
+    });
+
+    container.querySelector("#manual-visit-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const hours = parseInt(fd.get("hours"), 10) || 0;
+      const minutes = parseInt(fd.get("minutes"), 10) || 0;
+      const durationSeconds = hours * 3600 + minutes * 60;
+      if (durationSeconds <= 0) {
+        showToast("Indiquez une durée supérieure à 0");
+        return;
+      }
+      const date = fd.get("date");
+      await Store.put("visits", {
+        clientId: client.id,
+        clientName: client.name,
+        date,
+        startTime: `${date}T12:00:00`,
+        endTime: null,
+        durationSeconds,
+        auto: false,
+        manual: true,
+      });
+      showToast("Temps ajouté");
+      await renderForm(container, client.id);
     });
   }
 

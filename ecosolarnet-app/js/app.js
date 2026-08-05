@@ -4,6 +4,8 @@ import * as devis from "./views/devis.js";
 import * as planning from "./views/planning.js";
 import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
+import { getSettings } from "./db.js";
+import { startAutoWatch } from "./timer.js";
 
 const routes = {
   dashboard,
@@ -47,8 +49,11 @@ tabButtons.forEach((btn) => {
 });
 
 window.addEventListener("hashchange", renderRoute);
-window.addEventListener("DOMContentLoaded", renderRoute);
-if (document.readyState !== "loading") renderRoute();
+renderRoute();
+
+getSettings().then((s) => {
+  if (s.autoTimerEnabled) startAutoWatch();
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

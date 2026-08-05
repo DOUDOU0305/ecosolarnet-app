@@ -1,6 +1,6 @@
 const DB_NAME = "ecosolarnet-db";
-const DB_VERSION = 2;
-const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences"];
+const DB_VERSION = 3;
+const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences", "visits", "activeTimer"];
 
 let dbPromise = null;
 
@@ -90,6 +90,7 @@ export const DEFAULT_SETTINGS = {
   osmosisWaterFee: 35,
   maxClientsPerDay: 6,
   workDays: [1, 2, 3, 4, 5],
+  autoTimerEnabled: false,
   windowTiers: {
     petite: {
       label: "Petite maison / Appartement",
