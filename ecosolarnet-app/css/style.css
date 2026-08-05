@@ -331,3 +331,16 @@ table.simple th, table.simple td {
 .badge-brouillon { background: #eee; color: #666; }
 .badge-envoye { background: #dbeafe; color: #1e40af; }
 .badge-accepte { background: #dcfce7; color: #166534; }
+
+.mini-month {
+  border: 1px solid var(--border);
+}
+
+.mini-month-current {
+  border-color: var(--teal);
+  border-width: 2px;
+}
+
+.appt-block:active {
+  cursor: grabbing;
+}

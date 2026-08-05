@@ -1,14 +1,21 @@
 import { Store, getSettings } from "../db.js";
 import { haversineKm, postalCodeRoughDistance } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
+import { renderYear, renderMonth, renderDay } from "./calendar.js";
 
-const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-
-let currentMonthOffset = 0; // 0 = mois courant
 let lastOptions = null; // options de tournées générées (non encore enregistrées)
 
-export async function render(container) {
+export async function render(container, params) {
+  const id = params?.id;
+  if (id) {
+    if (id.startsWith("year-")) return renderYear(container, Number(id.slice(5)));
+    if (id.startsWith("month-")) return renderMonth(container, id.slice(6));
+    if (id.startsWith("day-")) return renderDay(container, id.slice(4));
+  }
+  return renderMain(container);
+}
+
+async function renderMain(container) {
   const settings = await getSettings();
   const clients = await Store.getAll("clients");
   const savedTournees = await Store.getAll("tournees");
@@ -30,10 +37,9 @@ export async function render(container) {
     </div>
 
     <div class="card">
-      <div class="section-title-row">
-        <h3 style="margin-top:0">Planning mensuel</h3>
-      </div>
-      <div id="calendar-zone"></div>
+      <h3 style="margin-top:0">Calendrier</h3>
+      <p class="muted">Vue par année, mois et jour — glissez un rendez-vous pour changer son heure.</p>
+      <button class="btn block" id="open-calendar-btn">📅 Voir le calendrier</button>
     </div>
   `;
 
@@ -41,8 +47,9 @@ export async function render(container) {
     await handleGenerate(container, clients, settings);
   });
 
-  wireSavedTourneeButtons(container);
-  await renderCalendar(container, savedTournees);
+  container.querySelector("#open-calendar-btn").addEventListener("click", () => {
+    location.hash = `#/planning/year-${new Date().getFullYear()}`;
+  });
 }
 
 function renderSavedTournees(savedTournees) {
@@ -55,10 +62,6 @@ function renderSavedTournees(savedTournees) {
       <p class="muted" style="margin:6px 0 0">${t.clientNames.join(", ")}</p>
     </div>
   `).join("");
-}
-
-function wireSavedTourneeButtons(container) {
-  // placeholder for future per-tournée actions
 }
 
 async function handleGenerate(container, clients, settings) {
@@ -91,7 +94,6 @@ async function handleGenerate(container, clients, settings) {
         <h3 style="margin-top:0">Mes tournées enregistrées</h3>
         ${renderSavedTournees(savedTournees)}
       `;
-      await renderCalendar(container, savedTournees);
       zone.innerHTML = "";
     });
   });
@@ -222,211 +224,4 @@ function computeTour(clients, base) {
   }
 
   return { clients: path, km, approximate };
-}
-
-// --- Calendrier mensuel ---
-
-async function renderCalendar(container, savedTournees) {
-  const zone = container.querySelector("#calendar-zone");
-  const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth() + currentMonthOffset, 1);
-  const year = target.getFullYear();
-  const month = target.getMonth();
-
-  const entries = await Store.getAll("planningEntries");
-  const entryByDate = new Map(entries.map((e) => [e.date, e]));
-
-  const firstDay = new Date(year, month, 1);
-  const startOffset = (firstDay.getDay() + 6) % 7; // lundi = 0
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  let cells = "";
-  for (let i = 0; i < startOffset; i++) cells += `<div></div>`;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const entry = entryByDate.get(dateStr);
-    const isToday = dateStr === todayStr;
-    cells += `
-      <button class="cal-day${isToday ? " cal-today" : ""}" data-date="${dateStr}"
-        style="aspect-ratio:1;border:1px solid var(--border);border-radius:8px;background:${entry ? "var(--teal-light)" : "white"};font-family:inherit;font-size:12px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">
-        <span style="font-weight:${isToday ? "700" : "400"}">${d}</span>
-        ${entry ? `<span style="font-size:9px;color:var(--teal-dark);text-align:center;line-height:1.1">${escapeHtml(entry.label)}</span>` : ""}
-      </button>
-    `;
-  }
-
-  zone.innerHTML = `
-    <div class="card-row" style="margin-bottom:10px">
-      <button class="btn secondary small" id="prev-month">‹</button>
-      <strong>${MONTHS[month]} ${year}</strong>
-      <button class="btn secondary small" id="next-month">›</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
-      ${WEEKDAYS.map((w) => `<div style="text-align:center;font-size:10px;color:var(--text-muted)">${w}</div>`).join("")}
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells}</div>
-    <div id="day-editor" style="margin-top:12px"></div>
-  `;
-
-  zone.querySelector("#prev-month").addEventListener("click", async () => {
-    currentMonthOffset -= 1;
-    await renderCalendar(container, savedTournees);
-  });
-  zone.querySelector("#next-month").addEventListener("click", async () => {
-    currentMonthOffset += 1;
-    await renderCalendar(container, savedTournees);
-  });
-
-  zone.querySelectorAll(".cal-day").forEach((btn) => {
-    btn.addEventListener("click", () => openDayEditor(zone, btn.dataset.date, savedTournees, entryByDate.get(btn.dataset.date), container));
-  });
-}
-
-async function openDayEditor(zone, dateStr, savedTournees, existingEntry, container) {
-  const editor = zone.querySelector("#day-editor");
-  editor.innerHTML = `<p class="muted">Chargement…</p>`;
-
-  const allClients = await Store.getAll("clients");
-  allClients.sort((a, b) => a.name.localeCompare(b.name));
-
-  let dayClients = [];
-  let freeLabel = "";
-  if (existingEntry) {
-    if (existingEntry.tourneeId) {
-      const t = savedTournees.find((t) => t.id === existingEntry.tourneeId) || (await Store.get("tournees", existingEntry.tourneeId));
-      if (t) {
-        dayClients = t.clientIds.map((id, i) => {
-          const c = allClients.find((c) => c.id === id);
-          return { id, name: t.clientNames[i], postalCode: c ? c.postalCode : "" };
-        });
-      }
-    } else {
-      freeLabel = existingEntry.label || "";
-    }
-  }
-
-  function renderEditor() {
-    const usedIds = new Set(dayClients.map((c) => c.id));
-    const available = allClients.filter((c) => !usedIds.has(c.id));
-
-    editor.innerHTML = `
-      <div class="card" style="background:var(--teal-light)">
-        <strong>${new Date(dateStr).toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</strong>
-
-        <div style="margin-top:10px">
-          ${dayClients.length === 0 ? `<p class="muted" style="margin:6px 0">Aucun client ce jour.</p>` : dayClients.map((c, i) => `
-            <div class="list-item">
-              <span>${escapeHtml(c.name)}${c.postalCode ? ` (${escapeHtml(c.postalCode)})` : ""}</span>
-              <button type="button" class="btn danger small" data-remove-idx="${i}">Retirer</button>
-            </div>
-          `).join("")}
-        </div>
-
-        <div class="field" style="margin-top:10px">
-          <label>Ajouter un client</label>
-          <select id="add-client-select">
-            <option value="">— Choisir un client —</option>
-            ${available.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${c.postalCode})</option>`).join("")}
-          </select>
-        </div>
-
-        ${savedTournees.length > 0 ? `
-          <div class="field">
-            <label>Ou copier une tournée enregistrée</label>
-            <select id="copy-tournee-select">
-              <option value="">— Aucune —</option>
-              ${savedTournees.map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.clientNames.length} clients)</option>`).join("")}
-            </select>
-          </div>
-        ` : ""}
-
-        <div class="field">
-          <label>Ou une note libre (si pas de client précis)</label>
-          <input id="free-label-input" value="${escapeHtml(freeLabel)}" placeholder="Ex: RDV fournisseur">
-        </div>
-
-        <button type="button" class="btn block" id="save-day-btn">Enregistrer ce jour</button>
-        ${existingEntry ? `<button type="button" class="btn danger block" id="clear-day-btn" style="margin-top:8px">Effacer ce jour</button>` : ""}
-      </div>
-    `;
-
-    editor.querySelector("#add-client-select").addEventListener("change", (e) => {
-      const id = e.target.value;
-      if (!id) return;
-      const c = allClients.find((c) => c.id === id);
-      if (c) dayClients.push({ id: c.id, name: c.name, postalCode: c.postalCode });
-      freeLabel = "";
-      renderEditor();
-    });
-
-    const copySelect = editor.querySelector("#copy-tournee-select");
-    if (copySelect) {
-      copySelect.addEventListener("change", (e) => {
-        const t = savedTournees.find((t) => t.id === e.target.value);
-        if (t) {
-          const usedIds2 = new Set(dayClients.map((c) => c.id));
-          t.clientIds.forEach((id, i) => {
-            if (!usedIds2.has(id)) {
-              const c = allClients.find((c) => c.id === id);
-              dayClients.push({ id, name: t.clientNames[i], postalCode: c ? c.postalCode : "" });
-            }
-          });
-        }
-        freeLabel = "";
-        renderEditor();
-      });
-    }
-
-    editor.querySelectorAll("[data-remove-idx]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        dayClients.splice(Number(btn.dataset.removeIdx), 1);
-        renderEditor();
-      });
-    });
-
-    editor.querySelector("#free-label-input").addEventListener("input", (e) => {
-      freeLabel = e.target.value;
-    });
-
-    editor.querySelector("#save-day-btn").addEventListener("click", async () => {
-      if (dayClients.length > 0) {
-        const settings = await getSettings();
-        const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
-        const withCoords = dayClients.map((c) => {
-          const full = allClients.find((x) => x.id === c.id);
-          return { ...c, lat: full?.lat ?? null, lng: full?.lng ?? null };
-        });
-        const { km } = computeTour(withCoords, base);
-        const tournee = await Store.put("tournees", {
-          name: `Jour du ${dateStr}`,
-          clientIds: dayClients.map((c) => c.id),
-          clientNames: dayClients.map((c) => c.name),
-          km,
-        });
-        await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: tournee.id, label: tournee.name });
-      } else if (freeLabel.trim()) {
-        await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: null, label: freeLabel.trim() });
-      } else if (existingEntry) {
-        await Store.delete("planningEntries", existingEntry.id);
-      } else {
-        showToast("Rien à enregistrer");
-        return;
-      }
-      showToast("Jour mis à jour");
-      const refreshedTournees = await Store.getAll("tournees");
-      await renderCalendar(container, refreshedTournees);
-    });
-
-    if (existingEntry) {
-      editor.querySelector("#clear-day-btn").addEventListener("click", async () => {
-        await Store.delete("planningEntries", existingEntry.id);
-        showToast("Jour effacé");
-        const refreshedTournees = await Store.getAll("tournees");
-        await renderCalendar(container, refreshedTournees);
-      });
-    }
-  }
-
-  renderEditor();
 }

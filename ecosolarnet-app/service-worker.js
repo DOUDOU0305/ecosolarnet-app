@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v4";
+const CACHE_NAME = "ecosolarnet-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -15,6 +15,7 @@ const APP_SHELL = [
   "./js/views/clients.js",
   "./js/views/devis.js",
   "./js/views/planning.js",
+  "./js/views/calendar.js",
   "./js/views/waitlist.js",
   "./js/views/settings.js",
   "./js/vendor/jspdf.umd.min.js",
