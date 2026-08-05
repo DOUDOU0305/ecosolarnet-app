@@ -2,6 +2,7 @@ import * as dashboard from "./views/dashboard.js";
 import * as clients from "./views/clients.js";
 import * as devis from "./views/devis.js";
 import * as planning from "./views/planning.js";
+import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
 
 const routes = {
@@ -9,6 +10,7 @@ const routes = {
   clients,
   devis,
   planning,
+  waitlist,
   settings,
 };
 

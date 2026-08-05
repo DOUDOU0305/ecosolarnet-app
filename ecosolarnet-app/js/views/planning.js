@@ -283,54 +283,150 @@ async function renderCalendar(container, savedTournees) {
   });
 }
 
-function openDayEditor(zone, dateStr, savedTournees, existingEntry, container) {
+async function openDayEditor(zone, dateStr, savedTournees, existingEntry, container) {
   const editor = zone.querySelector("#day-editor");
-  editor.innerHTML = `
-    <div class="card" style="background:var(--teal-light)">
-      <strong>${new Date(dateStr).toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</strong>
-      <div class="field" style="margin-top:10px">
-        <label>Tournée prévue ce jour</label>
-        <select id="entry-select">
-          <option value="">— Aucune —</option>
-          ${savedTournees.map((t) => `<option value="${t.id}" ${existingEntry?.tourneeId === t.id ? "selected" : ""}>${escapeHtml(t.name)} (${t.clientNames.length} clients)</option>`).join("")}
-          <option value="__custom" ${existingEntry && !existingEntry.tourneeId ? "selected" : ""}>Autre (texte libre)</option>
-        </select>
-      </div>
-      <div class="field" id="custom-field" style="${existingEntry && !existingEntry.tourneeId ? "" : "display:none"}">
-        <label>Description</label>
-        <input id="custom-label" value="${escapeHtml(existingEntry && !existingEntry.tourneeId ? existingEntry.label : "")}" placeholder="Ex: RDV fournisseur">
-      </div>
-      <button class="btn block" id="save-day-btn">Enregistrer ce jour</button>
-      ${existingEntry ? `<button class="btn danger block" id="clear-day-btn" style="margin-top:8px">Effacer ce jour</button>` : ""}
-    </div>
-  `;
+  editor.innerHTML = `<p class="muted">Chargement…</p>`;
 
-  const select = editor.querySelector("#entry-select");
-  const customField = editor.querySelector("#custom-field");
-  select.addEventListener("change", () => {
-    customField.style.display = select.value === "__custom" ? "" : "none";
-  });
+  const allClients = await Store.getAll("clients");
+  allClients.sort((a, b) => a.name.localeCompare(b.name));
 
-  editor.querySelector("#save-day-btn").addEventListener("click", async () => {
-    const val = select.value;
-    if (!val) {
-      if (existingEntry) await Store.delete("planningEntries", existingEntry.id);
-    } else if (val === "__custom") {
-      const label = editor.querySelector("#custom-label").value.trim() || "Note";
-      await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: null, label });
-    } else {
-      const t = savedTournees.find((t) => t.id === val);
-      await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: t.id, label: t.name });
-    }
-    showToast("Jour mis à jour");
-    await renderCalendar(container, savedTournees);
-  });
-
+  let dayClients = [];
+  let freeLabel = "";
   if (existingEntry) {
-    editor.querySelector("#clear-day-btn").addEventListener("click", async () => {
-      await Store.delete("planningEntries", existingEntry.id);
-      showToast("Jour effacé");
-      await renderCalendar(container, savedTournees);
-    });
+    if (existingEntry.tourneeId) {
+      const t = savedTournees.find((t) => t.id === existingEntry.tourneeId) || (await Store.get("tournees", existingEntry.tourneeId));
+      if (t) {
+        dayClients = t.clientIds.map((id, i) => {
+          const c = allClients.find((c) => c.id === id);
+          return { id, name: t.clientNames[i], postalCode: c ? c.postalCode : "" };
+        });
+      }
+    } else {
+      freeLabel = existingEntry.label || "";
+    }
   }
+
+  function renderEditor() {
+    const usedIds = new Set(dayClients.map((c) => c.id));
+    const available = allClients.filter((c) => !usedIds.has(c.id));
+
+    editor.innerHTML = `
+      <div class="card" style="background:var(--teal-light)">
+        <strong>${new Date(dateStr).toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</strong>
+
+        <div style="margin-top:10px">
+          ${dayClients.length === 0 ? `<p class="muted" style="margin:6px 0">Aucun client ce jour.</p>` : dayClients.map((c, i) => `
+            <div class="list-item">
+              <span>${escapeHtml(c.name)}${c.postalCode ? ` (${escapeHtml(c.postalCode)})` : ""}</span>
+              <button type="button" class="btn danger small" data-remove-idx="${i}">Retirer</button>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="field" style="margin-top:10px">
+          <label>Ajouter un client</label>
+          <select id="add-client-select">
+            <option value="">— Choisir un client —</option>
+            ${available.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${c.postalCode})</option>`).join("")}
+          </select>
+        </div>
+
+        ${savedTournees.length > 0 ? `
+          <div class="field">
+            <label>Ou copier une tournée enregistrée</label>
+            <select id="copy-tournee-select">
+              <option value="">— Aucune —</option>
+              ${savedTournees.map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.clientNames.length} clients)</option>`).join("")}
+            </select>
+          </div>
+        ` : ""}
+
+        <div class="field">
+          <label>Ou une note libre (si pas de client précis)</label>
+          <input id="free-label-input" value="${escapeHtml(freeLabel)}" placeholder="Ex: RDV fournisseur">
+        </div>
+
+        <button type="button" class="btn block" id="save-day-btn">Enregistrer ce jour</button>
+        ${existingEntry ? `<button type="button" class="btn danger block" id="clear-day-btn" style="margin-top:8px">Effacer ce jour</button>` : ""}
+      </div>
+    `;
+
+    editor.querySelector("#add-client-select").addEventListener("change", (e) => {
+      const id = e.target.value;
+      if (!id) return;
+      const c = allClients.find((c) => c.id === id);
+      if (c) dayClients.push({ id: c.id, name: c.name, postalCode: c.postalCode });
+      freeLabel = "";
+      renderEditor();
+    });
+
+    const copySelect = editor.querySelector("#copy-tournee-select");
+    if (copySelect) {
+      copySelect.addEventListener("change", (e) => {
+        const t = savedTournees.find((t) => t.id === e.target.value);
+        if (t) {
+          const usedIds2 = new Set(dayClients.map((c) => c.id));
+          t.clientIds.forEach((id, i) => {
+            if (!usedIds2.has(id)) {
+              const c = allClients.find((c) => c.id === id);
+              dayClients.push({ id, name: t.clientNames[i], postalCode: c ? c.postalCode : "" });
+            }
+          });
+        }
+        freeLabel = "";
+        renderEditor();
+      });
+    }
+
+    editor.querySelectorAll("[data-remove-idx]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        dayClients.splice(Number(btn.dataset.removeIdx), 1);
+        renderEditor();
+      });
+    });
+
+    editor.querySelector("#free-label-input").addEventListener("input", (e) => {
+      freeLabel = e.target.value;
+    });
+
+    editor.querySelector("#save-day-btn").addEventListener("click", async () => {
+      if (dayClients.length > 0) {
+        const settings = await getSettings();
+        const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
+        const withCoords = dayClients.map((c) => {
+          const full = allClients.find((x) => x.id === c.id);
+          return { ...c, lat: full?.lat ?? null, lng: full?.lng ?? null };
+        });
+        const { km } = computeTour(withCoords, base);
+        const tournee = await Store.put("tournees", {
+          name: `Jour du ${dateStr}`,
+          clientIds: dayClients.map((c) => c.id),
+          clientNames: dayClients.map((c) => c.name),
+          km,
+        });
+        await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: tournee.id, label: tournee.name });
+      } else if (freeLabel.trim()) {
+        await Store.put("planningEntries", { id: existingEntry?.id, date: dateStr, tourneeId: null, label: freeLabel.trim() });
+      } else if (existingEntry) {
+        await Store.delete("planningEntries", existingEntry.id);
+      } else {
+        showToast("Rien à enregistrer");
+        return;
+      }
+      showToast("Jour mis à jour");
+      const refreshedTournees = await Store.getAll("tournees");
+      await renderCalendar(container, refreshedTournees);
+    });
+
+    if (existingEntry) {
+      editor.querySelector("#clear-day-btn").addEventListener("click", async () => {
+        await Store.delete("planningEntries", existingEntry.id);
+        showToast("Jour effacé");
+        const refreshedTournees = await Store.getAll("tournees");
+        await renderCalendar(container, refreshedTournees);
+      });
+    }
+  }
+
+  renderEditor();
 }
