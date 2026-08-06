@@ -69,14 +69,14 @@ export async function render(container) {
     <div id="departure-banner-zone"></div>
 
     <div class="stat-row">
-      <div class="stat-card">
+      <button type="button" class="stat-card" id="stat-clients" style="text-align:left;border:none;font-family:inherit;cursor:pointer;margin:0;width:100%">
         <div class="num">${clients.length}</div>
         <div class="label">Clients</div>
-      </div>
-      <div class="stat-card alt">
+      </button>
+      <button type="button" class="stat-card alt" id="stat-devis" style="text-align:left;border:none;font-family:inherit;cursor:pointer;margin:0;width:100%">
         <div class="num">${fmtEuro(caCeMois)}</div>
         <div class="label">Devis acceptés ce mois</div>
-      </div>
+      </button>
     </div>
 
     <div class="card">
@@ -128,6 +128,9 @@ export async function render(container) {
       <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
   `;
+
+  container.querySelector("#stat-clients").addEventListener("click", () => (location.hash = "#/clients"));
+  container.querySelector("#stat-devis").addEventListener("click", () => (location.hash = "#/devis"));
 
   await renderTimerZone(container);
 
