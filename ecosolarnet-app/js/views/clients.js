@@ -48,6 +48,12 @@ async function renderList(container) {
 
   container.innerHTML = `
     <h1>Clients</h1>
+    <div class="stat-row" style="grid-template-columns:1fr">
+      <div class="stat-card">
+        <div class="num">${clients.length}</div>
+        <div class="label">Clients</div>
+      </div>
+    </div>
     ${clients.length === 0 ? `
       <div class="empty-state">
         <div class="big">👤</div>

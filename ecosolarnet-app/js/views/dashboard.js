@@ -12,11 +12,6 @@ import {
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
 import { speak } from "../huggyVoice.js";
-
-function fmtEuro(n) {
-  return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
-}
-
 let elapsedIntervalId = null;
 let unsubscribeTimer = null;
 let unsubscribeDeparture = null;
@@ -37,17 +32,12 @@ export async function render(container) {
 
   const settings = await getSettings();
   const clients = await Store.getAll("clients");
-  const devisList = await Store.getAll("devis");
   const entries = await Store.getAll("planningEntries");
   const visitTimesAll = await Store.getAll("visitTimes");
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
   const tomorrowStr = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const monthPrefix = todayStr.slice(0, 7);
-
-  const devisCeMois = devisList.filter((d) => (d.date || "").startsWith(monthPrefix));
-  const caCeMois = devisCeMois.filter((d) => d.status === "accepte").reduce((s, d) => s + d.total, 0);
 
   function appointmentsForDate(dateStr) {
     const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
@@ -67,17 +57,6 @@ export async function render(container) {
     <p class="muted" id="weather-line" style="margin-top:2px">🌤️ Chargement de la météo…</p>
 
     <div id="departure-banner-zone"></div>
-
-    <div class="stat-row">
-      <button type="button" class="stat-card" id="stat-clients" style="text-align:left;border:none;font-family:inherit;cursor:pointer;margin:0;width:100%">
-        <div class="num">${clients.length}</div>
-        <div class="label">Clients</div>
-      </button>
-      <button type="button" class="stat-card alt" id="stat-devis" style="text-align:left;border:none;font-family:inherit;cursor:pointer;margin:0;width:100%">
-        <div class="num">${fmtEuro(caCeMois)}</div>
-        <div class="label">Devis acceptés ce mois</div>
-      </button>
-    </div>
 
     <div class="card">
       <h3 style="margin-top:0">Alertes de départ</h3>
@@ -128,9 +107,6 @@ export async function render(container) {
       <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
   `;
-
-  container.querySelector("#stat-clients").addEventListener("click", () => (location.hash = "#/clients"));
-  container.querySelector("#stat-devis").addEventListener("click", () => (location.hash = "#/devis"));
 
   await renderTimerZone(container);
 

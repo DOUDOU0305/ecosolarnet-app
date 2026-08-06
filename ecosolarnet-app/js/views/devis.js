@@ -71,8 +71,19 @@ async function renderList(container) {
   const devisList = await Store.getAll("devis");
   devisList.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const caCeMois = devisList
+    .filter((d) => (d.date || "").startsWith(monthPrefix) && d.status === "accepte")
+    .reduce((s, d) => s + d.total, 0);
+
   container.innerHTML = `
     <h1>Devis</h1>
+    <div class="stat-row" style="grid-template-columns:1fr">
+      <div class="stat-card alt">
+        <div class="num">${fmtEuro(caCeMois)}</div>
+        <div class="label">Devis acceptés ce mois</div>
+      </div>
+    </div>
     ${devisList.length === 0 ? `
       <div class="empty-state">
         <div class="big">📄</div>
