@@ -9,6 +9,8 @@ import {
   requestNotificationPermission,
   fmtMinutesOfDay,
 } from "../departureReminder.js";
+import { getWeatherSummary } from "../weather.js";
+import { computeTips } from "../huggyTips.js";
 
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
@@ -52,6 +54,7 @@ export async function render(container) {
   container.innerHTML = `
     <h1>Bonjour 👋</h1>
     <p class="muted" style="margin-top:-10px">${settings.companyName} — ${now.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</p>
+    <p class="muted" id="weather-line" style="margin-top:2px">🌤️ Chargement de la météo…</p>
 
     <div id="departure-banner-zone"></div>
 
@@ -98,6 +101,11 @@ export async function render(container) {
           <strong>${escapeHtml(e.label)}</strong>
         </div>
       `).join("")}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">🕵️ Les bons tuyaux de Huggy</h3>
+      <div id="huggy-tips-zone"><p class="muted">Analyse en cours…</p></div>
     </div>
 
     <div class="card">
@@ -186,6 +194,37 @@ export async function render(container) {
       banner.innerHTML = "";
     });
   });
+
+  const weatherLine = container.querySelector("#weather-line");
+  if (settings.baseLat != null && settings.baseLng != null) {
+    getWeatherSummary(settings.baseLat, settings.baseLng)
+      .then((summary) => {
+        if (weatherLine) weatherLine.textContent = `🌤️ ${summary.text}`;
+      })
+      .catch(() => {
+        if (weatherLine) weatherLine.textContent = "🌤️ Météo indisponible pour le moment.";
+      });
+  } else if (weatherLine) {
+    weatherLine.textContent = "🌤️ Renseignez votre adresse dans Réglages pour voir la météo.";
+  }
+
+  computeTips()
+    .then((tips) => {
+      const zone = container.querySelector("#huggy-tips-zone");
+      if (!zone) return;
+      zone.innerHTML = tips.map((t) => `
+        <div class="list-item" style="align-items:flex-start">
+          <div>
+            <strong>${t.icon} ${escapeHtml(t.title)}</strong>
+            <p class="muted" style="margin:4px 0 0">${escapeHtml(t.text)}</p>
+          </div>
+        </div>
+      `).join("");
+    })
+    .catch(() => {
+      const zone = container.querySelector("#huggy-tips-zone");
+      if (zone) zone.innerHTML = `<p class="muted">Impossible d'analyser vos données pour le moment.</p>`;
+    });
 }
 
 async function renderTimerZone(container) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v12";
+const CACHE_NAME = "ecosolarnet-v13";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -14,6 +14,8 @@ const APP_SHELL = [
   "./js/departureReminder.js",
   "./js/addressAutocomplete.js",
   "./js/qrcode.js",
+  "./js/weather.js",
+  "./js/huggyTips.js",
   "./js/toast.js",
   "./js/views/dashboard.js",
   "./js/views/clients.js",
@@ -48,8 +50,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Ne jamais mettre en cache les appels de géocodage externes.
-  if (url.hostname.includes("nominatim.openstreetmap.org")) {
+  // Ne jamais mettre en cache les appels aux services externes (géocodage,
+  // météo, routage) : on veut toujours des données fraîches, jamais périmées.
+  const EXTERNAL_HOSTS = [
+    "nominatim.openstreetmap.org",
+    "api.open-meteo.com",
+    "router.project-osrm.org",
+  ];
+  if (EXTERNAL_HOSTS.some((h) => url.hostname.includes(h))) {
     event.respondWith(fetch(event.request));
     return;
   }
