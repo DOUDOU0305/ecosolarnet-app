@@ -1,6 +1,7 @@
 import { getSettings, saveSettings } from "../db.js";
 import { geocodeAddress, fullAddress } from "../geo.js";
 import { showToast } from "../toast.js";
+import { generateQrDataUrl } from "../qrcode.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -69,6 +70,20 @@ export async function render(container) {
           </div>
         </div>
         <p class="muted" id="geo-status">${s.baseLat != null ? "✅ Adresse localisée." : "⚠️ Adresse pas encore localisée — nécessaire pour calculer les distances."}</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Avis Google</h3>
+        <p class="muted">Ce lien est intégré sous forme de code QR sur vos devis, pour que vos clients puissent laisser un avis facilement.</p>
+        <div class="field">
+          <label>Lien de l'avis Google</label>
+          <input name="googleReviewUrl" id="google-review-url" value="${s.googleReviewUrl}" placeholder="https://g.page/r/....../review">
+        </div>
+        <div style="text-align:center;margin-top:10px">
+          <div id="qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
+          <p class="muted" style="margin:8px 0 0">Scannez pour tester, ou téléchargez pour l'imprimer</p>
+          <a href="#" id="qr-download-link" download="ecosolarnet-avis-qr.png" class="btn secondary small" style="margin-top:8px;display:inline-block;text-decoration:none">Télécharger l'image</a>
+        </div>
       </div>
 
       <div class="card">
@@ -160,6 +175,32 @@ export async function render(container) {
       <p class="muted">Application ECOSOLARNET — vos données (clients, devis, planning) sont stockées uniquement sur cet appareil, dans ce navigateur. Pensez à ne pas effacer les données de navigation de Safari pour cette appli.</p>
     </div>
   `;
+
+  async function refreshQrPreview(url) {
+    const preview = container.querySelector("#qr-preview");
+    const downloadLink = container.querySelector("#qr-download-link");
+    if (!url) {
+      preview.innerHTML = `<p class="muted" style="margin:0">Renseignez le lien ci-dessus</p>`;
+      downloadLink.style.display = "none";
+      return;
+    }
+    try {
+      const dataUrl = await generateQrDataUrl(url, 260);
+      preview.innerHTML = `<img src="${dataUrl}" alt="Code QR avis Google" style="width:180px;height:180px;display:block">`;
+      downloadLink.href = dataUrl;
+      downloadLink.style.display = "inline-block";
+    } catch {
+      preview.innerHTML = `<p class="muted" style="margin:0">Impossible de générer le code QR</p>`;
+      downloadLink.style.display = "none";
+    }
+  }
+  await refreshQrPreview(s.googleReviewUrl);
+
+  let qrDebounce;
+  container.querySelector("#google-review-url").addEventListener("input", (e) => {
+    clearTimeout(qrDebounce);
+    qrDebounce = setTimeout(() => refreshQrPreview(e.target.value.trim()), 500);
+  });
 
   container.querySelector("#settings-form").addEventListener("submit", async (e) => {
     e.preventDefault();

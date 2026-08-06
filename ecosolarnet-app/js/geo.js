@@ -73,3 +73,11 @@ export function postalCodeRoughDistance(pc1, pc2) {
 export function fullAddress(entity) {
   return `${entity.address}, ${entity.postalCode} ${entity.city}, Belgique`;
 }
+
+export function wazeUrl(c) {
+  if (c.lat != null && c.lng != null) {
+    return `https://waze.com/ul?ll=${c.lat}%2C${c.lng}&navigate=yes`;
+  }
+  const address = [c.address, c.postalCode, c.city].filter(Boolean).join(", ");
+  return `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
+}

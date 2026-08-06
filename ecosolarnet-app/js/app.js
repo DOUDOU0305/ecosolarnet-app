@@ -6,6 +6,7 @@ import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
 import { getSettings } from "./db.js";
 import { startAutoWatch } from "./timer.js";
+import { startDepartureReminders } from "./departureReminder.js";
 
 const routes = {
   dashboard,
@@ -53,6 +54,7 @@ renderRoute();
 
 getSettings().then((s) => {
   if (s.autoTimerEnabled) startAutoWatch();
+  if (s.departureRemindersEnabled) startDepartureReminders();
 });
 
 if ("serviceWorker" in navigator) {

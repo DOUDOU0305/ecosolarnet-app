@@ -1,6 +1,14 @@
 import { Store, getSettings, saveSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { getActiveTimer, startVisit, stopVisit, onTimerEvent, startAutoWatch, stopAutoWatch, formatDuration } from "../timer.js";
+import { wazeUrl } from "../geo.js";
+import {
+  onDepartureEvent,
+  startDepartureReminders,
+  stopDepartureReminders,
+  requestNotificationPermission,
+  fmtMinutesOfDay,
+} from "../departureReminder.js";
 
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
@@ -8,11 +16,16 @@ function fmtEuro(n) {
 
 let elapsedIntervalId = null;
 let unsubscribeTimer = null;
+let unsubscribeDeparture = null;
 
 export async function render(container) {
   if (unsubscribeTimer) {
     unsubscribeTimer();
     unsubscribeTimer = null;
+  }
+  if (unsubscribeDeparture) {
+    unsubscribeDeparture();
+    unsubscribeDeparture = null;
   }
   if (elapsedIntervalId) {
     clearInterval(elapsedIntervalId);
@@ -40,6 +53,8 @@ export async function render(container) {
     <h1>Bonjour 👋</h1>
     <p class="muted" style="margin-top:-10px">${settings.companyName} — ${now.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</p>
 
+    <div id="departure-banner-zone"></div>
+
     <div class="stat-row">
       <div class="stat-card">
         <div class="num">${clients.length}</div>
@@ -49,6 +64,16 @@ export async function render(container) {
         <div class="num">${fmtEuro(caCeMois)}</div>
         <div class="label">Devis acceptés ce mois</div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Alertes de départ</h3>
+      <p class="muted">Prévient quand il est temps de partir vers le prochain client, en tenant compte du trajet.</p>
+      <div class="checkbox-row">
+        <input type="checkbox" id="departure-toggle" ${settings.departureRemindersEnabled ? "checked" : ""}>
+        <label for="departure-toggle" style="margin:0;font-weight:400;color:var(--text)">Activer les alertes de départ (tant que l'appli reste ouverte)</label>
+      </div>
+      <p class="muted" id="departure-status" style="margin:6px 0 0"></p>
     </div>
 
     <div class="card">
@@ -121,6 +146,45 @@ export async function render(container) {
     } else if (event === "error") {
       showToast(data);
     }
+  });
+
+  const departureStatus = container.querySelector("#departure-status");
+  if (settings.departureRemindersEnabled) {
+    departureStatus.textContent = "✅ Alertes actives tant que l'appli reste ouverte.";
+  }
+
+  container.querySelector("#departure-toggle").addEventListener("change", async (e) => {
+    const enabled = e.target.checked;
+    await saveSettings({ departureRemindersEnabled: enabled });
+    if (enabled) {
+      await requestNotificationPermission();
+      startDepartureReminders();
+      departureStatus.textContent = "✅ Alertes actives tant que l'appli reste ouverte.";
+    } else {
+      stopDepartureReminders();
+      departureStatus.textContent = "";
+      container.querySelector("#departure-banner-zone").innerHTML = "";
+    }
+  });
+
+  unsubscribeDeparture = onDepartureEvent((event, data) => {
+    if (event !== "departure") return;
+    showToast(data.message);
+    const banner = container.querySelector("#departure-banner-zone");
+    if (!banner) return;
+    banner.innerHTML = `
+      <div class="card" style="background:var(--sun);border:none">
+        <strong>🚗 Il est temps de partir</strong>
+        <p style="margin:6px 0">${escapeHtml(data.appt.clientName)} — trajet ≈ ${Math.round(data.travelMin)} min, RDV à ${fmtMinutesOfDay(data.appt.startMinutes)}</p>
+        <div class="grid-2">
+          <a href="${wazeUrl(data.client || {})}" class="btn secondary block" style="text-decoration:none;text-align:center">🚗 Waze</a>
+          <button type="button" class="btn block" id="dismiss-departure-btn">J'ai compris</button>
+        </div>
+      </div>
+    `;
+    banner.querySelector("#dismiss-departure-btn").addEventListener("click", () => {
+      banner.innerHTML = "";
+    });
   });
 }
 

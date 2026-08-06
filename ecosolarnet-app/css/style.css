@@ -374,3 +374,39 @@ table.simple th, table.simple td {
 .address-suggestion:active {
   background: var(--teal-light);
 }
+
+.slider-wrapper {
+  position: relative;
+  padding-top: 30px;
+  margin-bottom: 2px;
+}
+
+.slider-wrapper input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--teal);
+}
+
+.slider-bubble {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  background: var(--teal-dark);
+  color: white;
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.slider-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--teal-dark);
+}

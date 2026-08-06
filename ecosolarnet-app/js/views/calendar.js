@@ -1,5 +1,6 @@
 import { Store, getSettings } from "../db.js";
 import { showToast, escapeHtml } from "../toast.js";
+import { wazeUrl } from "../geo.js";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -20,14 +21,6 @@ function fmtHM(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${pad2(h)}:${pad2(m)}`;
-}
-
-function wazeUrl(c) {
-  if (c.lat != null && c.lng != null) {
-    return `https://waze.com/ul?ll=${c.lat}%2C${c.lng}&navigate=yes`;
-  }
-  const address = [c.address, c.postalCode, c.city].filter(Boolean).join(", ");
-  return `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
 }
 
 function parseHM(str) {

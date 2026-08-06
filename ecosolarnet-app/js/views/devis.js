@@ -3,6 +3,7 @@ import { getSettings } from "../db.js";
 import { classifyRegion, regionRateRange, haversineKm } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
+import { generateQrDataUrl } from "../qrcode.js";
 
 const SERVICE_LABELS = {
   vitres: "Nettoyage vitres",
@@ -151,6 +152,17 @@ async function renderForm(container, id) {
             <input type="number" step="any" min="0" name="osmosisWaterFee" id="osmosis-input" value="${devis?.osmosisWaterFee ?? settings.osmosisWaterFee}">
           </div>
         </div>
+        <div class="field">
+          <label>Prix par panneau — glissez pour ajuster selon la situation</label>
+          <div class="slider-wrapper">
+            <div class="slider-bubble" id="panel-price-bubble">0 €</div>
+            <input type="range" name="panelPrice" id="panel-price-slider" min="2" max="15" step="0.5" value="${devis?.panelPrice ?? settings.solarPanelPrice}">
+          </div>
+          <div class="card-row" style="margin-top:0">
+            <span class="muted" style="font-size:11px">2 €</span>
+            <span class="muted" style="font-size:11px">15 €</span>
+          </div>
+        </div>
         <p class="muted" id="panel-hint"></p>
       </div>
 
@@ -293,6 +305,8 @@ async function renderForm(container, id) {
   const regionSelect = container.querySelector("#region-select");
   const hourlyFields = container.querySelector("#hourly-fields");
   const panelFields = container.querySelector("#panel-fields");
+  const panelPriceSlider = container.querySelector("#panel-price-slider");
+  const panelPriceBubble = container.querySelector("#panel-price-bubble");
   const grilleFields = container.querySelector("#grille-fields");
   const tierNormalFields = container.querySelector("#tier-normal-fields");
   const tierSelect = container.querySelector("#tier-select");
@@ -307,6 +321,18 @@ async function renderForm(container, id) {
     if (serviceSelect.value === "panneaux") return "panneaux";
     if (serviceSelect.value === "vitres" && pricingModeSelect.value === "grille") return "grille";
     return "horaire";
+  }
+
+  function updatePanelPriceBubble() {
+    const min = parseFloat(panelPriceSlider.min);
+    const max = parseFloat(panelPriceSlider.max);
+    const val = parseFloat(panelPriceSlider.value);
+    const pct = (val - min) / (max - min);
+    const sliderWidth = panelPriceSlider.offsetWidth;
+    const thumbWidth = 20;
+    const x = pct * (sliderWidth - thumbWidth) + thumbWidth / 2;
+    panelPriceBubble.style.left = `${x}px`;
+    panelPriceBubble.textContent = `${val} €/panneau`;
   }
 
   function updateTierPriceSuggestion(forceOverwrite) {
@@ -361,8 +387,10 @@ async function renderForm(container, id) {
     if (showPanels) {
       const count = parseFloat(container.querySelector("#panel-input").value) || 0;
       const osmosis = parseFloat(container.querySelector("#osmosis-input").value) || 0;
-      labor = count * settings.solarPanelPrice + osmosis;
-      container.querySelector("#panel-hint").textContent = `${settings.solarPanelPrice} €/panneau × ${count} + ${fmtEuro(osmosis)} d'eau osmosée`;
+      const panelPrice = parseFloat(panelPriceSlider.value) || 0;
+      labor = count * panelPrice + osmosis;
+      container.querySelector("#panel-hint").textContent = `${panelPrice} €/panneau × ${count} + ${fmtEuro(osmosis)} d'eau osmosée`;
+      updatePanelPriceBubble();
     } else if (showGrille) {
       const base = parseFloat(tierPriceInput.value) || 0;
       const { sum } = surchargesTotal();
@@ -470,6 +498,7 @@ async function renderForm(container, id) {
       hours: mode === "horaire" ? parseFloat(fd.get("hours")) || 0 : null,
       rate: mode === "horaire" ? parseFloat(fd.get("rate")) || 0 : null,
       panelCount: mode === "panneaux" ? parseFloat(fd.get("panelCount")) || 0 : null,
+      panelPrice: mode === "panneaux" ? parseFloat(fd.get("panelPrice")) || 0 : null,
       osmosisWaterFee: mode === "panneaux" ? parseFloat(fd.get("osmosisWaterFee")) || 0 : null,
       tier: mode === "grille" ? tierSelect.value : null,
       tierFormule: mode === "grille" && tierSelect.value !== "tresGrande" ? tierFormuleSelect.value : null,
@@ -563,7 +592,8 @@ async function generatePdf(devis, settings) {
   doc.setFontSize(11);
   const rows = [];
   if (devis.serviceType === "panneaux") {
-    rows.push([`Nettoyage panneaux solaires (${devis.panelCount} × ${settings.solarPanelPrice} €)`, fmtEuro(devis.panelCount * settings.solarPanelPrice)]);
+    const panelPrice = devis.panelPrice ?? settings.solarPanelPrice;
+    rows.push([`Nettoyage panneaux solaires (${devis.panelCount} × ${panelPrice} €)`, fmtEuro(devis.panelCount * panelPrice)]);
     rows.push(["Eau osmosée (forfait)", fmtEuro(devis.osmosisWaterFee)]);
   } else if (devis.pricingMode === "grille") {
     rows.push(["Forfait nettoyage vitres", fmtEuro(devis.tierPrice)]);
@@ -597,6 +627,21 @@ async function generatePdf(devis, settings) {
   doc.setFontSize(9);
   doc.setTextColor(120, 120, 120);
   doc.text("Devis valable 30 jours à compter de la date d'émission.", marginX, y);
+
+  if (settings.googleReviewUrl) {
+    try {
+      const qrDataUrl = await generateQrDataUrl(settings.googleReviewUrl, 200);
+      const qrSize = 26;
+      const qrX = 210 - marginX - qrSize;
+      const qrY = y - 8;
+      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+      doc.setFontSize(8);
+      doc.setTextColor(13, 110, 100);
+      doc.text("Laissez-nous un avis ⭐", qrX + qrSize / 2, qrY + qrSize + 5, { align: "center" });
+    } catch {
+      // pas de QR si la génération échoue, le reste du devis reste valide
+    }
+  }
 
   if (devis.photos && devis.photos.length > 0) {
     doc.addPage();

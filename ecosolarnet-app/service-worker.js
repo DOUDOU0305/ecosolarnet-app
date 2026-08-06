@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v9";
+const CACHE_NAME = "ecosolarnet-v12";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,7 +10,10 @@ const APP_SHELL = [
   "./js/photo.js",
   "./js/scheduling.js",
   "./js/timer.js",
+  "./js/routing.js",
+  "./js/departureReminder.js",
   "./js/addressAutocomplete.js",
+  "./js/qrcode.js",
   "./js/toast.js",
   "./js/views/dashboard.js",
   "./js/views/clients.js",
@@ -20,6 +23,7 @@ const APP_SHELL = [
   "./js/views/waitlist.js",
   "./js/views/settings.js",
   "./js/vendor/jspdf.umd.min.js",
+  "./js/vendor/qrcode.min.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",

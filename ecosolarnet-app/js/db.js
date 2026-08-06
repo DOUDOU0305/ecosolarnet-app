@@ -91,6 +91,8 @@ export const DEFAULT_SETTINGS = {
   maxClientsPerDay: 6,
   workDays: [1, 2, 3, 4, 5],
   autoTimerEnabled: false,
+  departureRemindersEnabled: false,
+  googleReviewUrl: "https://g.page/r/CQjUFRrPW98OEAE/review",
   windowTiers: {
     petite: {
       label: "Petite maison / Appartement",
