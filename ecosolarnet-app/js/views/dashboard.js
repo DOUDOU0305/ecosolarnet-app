@@ -2,13 +2,7 @@ import { Store, getSettings, saveSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { getActiveTimer, startVisit, stopVisit, onTimerEvent, startAutoWatch, stopAutoWatch, formatDuration } from "../timer.js";
 import { wazeUrl } from "../geo.js";
-import {
-  onDepartureEvent,
-  startDepartureReminders,
-  stopDepartureReminders,
-  requestNotificationPermission,
-  fmtMinutesOfDay,
-} from "../departureReminder.js";
+import { onDepartureEvent, fmtMinutesOfDay } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
 import { speak } from "../huggyVoice.js";
@@ -57,16 +51,6 @@ export async function render(container) {
     <p class="muted" id="weather-line" style="margin-top:2px">🌤️ Chargement de la météo…</p>
 
     <div id="departure-banner-zone"></div>
-
-    <div class="card">
-      <h3 style="margin-top:0">Alertes de départ</h3>
-      <p class="muted">Prévient quand il est temps de partir vers le prochain client, en tenant compte du trajet.</p>
-      <div class="checkbox-row">
-        <input type="checkbox" id="departure-toggle" ${settings.departureRemindersEnabled ? "checked" : ""}>
-        <label for="departure-toggle" style="margin:0;font-weight:400;color:var(--text)">Activer les alertes de départ (tant que l'appli reste ouverte)</label>
-      </div>
-      <p class="muted" id="departure-status" style="margin:6px 0 0"></p>
-    </div>
 
     <div class="card">
       <h3 style="margin-top:0">Chronomètre</h3>
@@ -141,25 +125,6 @@ export async function render(container) {
       renderTimerZone(container);
     } else if (event === "error") {
       showToast(data);
-    }
-  });
-
-  const departureStatus = container.querySelector("#departure-status");
-  if (settings.departureRemindersEnabled) {
-    departureStatus.textContent = "✅ Alertes actives tant que l'appli reste ouverte.";
-  }
-
-  container.querySelector("#departure-toggle").addEventListener("change", async (e) => {
-    const enabled = e.target.checked;
-    await saveSettings({ departureRemindersEnabled: enabled });
-    if (enabled) {
-      await requestNotificationPermission();
-      startDepartureReminders();
-      departureStatus.textContent = "✅ Alertes actives tant que l'appli reste ouverte.";
-    } else {
-      stopDepartureReminders();
-      departureStatus.textContent = "";
-      container.querySelector("#departure-banner-zone").innerHTML = "";
     }
   });
 

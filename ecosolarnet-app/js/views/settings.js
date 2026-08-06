@@ -2,6 +2,7 @@ import { getSettings, saveSettings } from "../db.js";
 import { geocodeAddress, fullAddress } from "../geo.js";
 import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
+import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -168,6 +169,16 @@ export async function render(container) {
       </div>
 
       <div class="card">
+        <h3 style="margin-top:0">Alertes de départ</h3>
+        <p class="muted">Prévient quand il est temps de partir vers le prochain client, en tenant compte du trajet.</p>
+        <div class="checkbox-row">
+          <input type="checkbox" id="departure-toggle" ${s.departureRemindersEnabled ? "checked" : ""}>
+          <label for="departure-toggle" style="margin:0;font-weight:400;color:var(--text)">Activer les alertes de départ (tant que l'appli reste ouverte)</label>
+        </div>
+        <p class="muted" id="departure-status" style="margin:6px 0 0">${s.departureRemindersEnabled ? "✅ Alertes actives tant que l'appli reste ouverte." : ""}</p>
+      </div>
+
+      <div class="card">
         <h3 style="margin-top:0">Jours de Défense</h3>
         <p class="muted">Ces codes seront proposés dans le calendrier pour marquer un jour comme indisponible (préparation, exercice, tir…).</p>
         <div class="field">
@@ -209,6 +220,21 @@ export async function render(container) {
   container.querySelector("#google-review-url").addEventListener("input", (e) => {
     clearTimeout(qrDebounce);
     qrDebounce = setTimeout(() => refreshQrPreview(e.target.value.trim()), 500);
+  });
+
+  const departureStatus = container.querySelector("#departure-status");
+  container.querySelector("#departure-toggle").addEventListener("change", async (e) => {
+    const enabled = e.target.checked;
+    await saveSettings({ departureRemindersEnabled: enabled });
+    if (enabled) {
+      departureStatus.textContent = "Activation…";
+      await requestNotificationPermission();
+      startDepartureReminders();
+      departureStatus.textContent = "✅ Alertes actives tant que l'appli reste ouverte.";
+    } else {
+      stopDepartureReminders();
+      departureStatus.textContent = "";
+    }
   });
 
   container.querySelector("#settings-form").addEventListener("submit", async (e) => {
