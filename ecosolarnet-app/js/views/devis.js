@@ -12,6 +12,8 @@ const SERVICE_LABELS = {
   carport: "Nettoyage carport",
   panneaux: "Nettoyage panneaux solaires",
 };
+const SERVICE_ORDER = Object.keys(SERVICE_LABELS);
+const HOURLY_ONLY_TYPES = ["veranda", "pergola", "carport"];
 
 const STATUS_LABELS = {
   brouillon: "Brouillon",
@@ -29,6 +31,33 @@ function fmtEuro(n) {
 function fmtRange(range) {
   if (!range) return "";
   return range.min === range.max ? `${range.min} €` : `${range.min}–${range.max} €`;
+}
+
+// Compatibilité avec d'anciens devis enregistrés avant le passage au
+// multi-prestations (ils avaient un seul serviceType à la racine).
+function getServicesArray(d) {
+  if (!d) return [];
+  if (d.services) return d.services;
+  if (!d.serviceType) return [];
+  return [{
+    serviceType: d.serviceType,
+    pricingMode: d.pricingMode,
+    hours: d.hours,
+    rate: d.rate,
+    panelCount: d.panelCount,
+    panelPrice: d.panelPrice,
+    osmosisWaterFee: d.osmosisWaterFee,
+    tier: d.tier,
+    tierFormule: d.tierFormule,
+    tierType: d.tierType,
+    tierPrice: d.tierPrice,
+    surcharges: d.surcharges || [],
+    lineTotal: d.laborCost,
+  }];
+}
+
+function serviceLabelsLine(d) {
+  return getServicesArray(d).map((s) => SERVICE_LABELS[s.serviceType] || s.serviceType).join(", ") || "—";
 }
 
 export async function render(container, params) {
@@ -55,7 +84,7 @@ async function renderList(container) {
           <div class="list-item" data-id="${d.id}">
             <div>
               <div><strong>${escapeHtml(d.clientName || "Client")}</strong></div>
-              <div class="muted">${SERVICE_LABELS[d.serviceType] || d.serviceType} · ${d.date}</div>
+              <div class="muted">${escapeHtml(serviceLabelsLine(d))} · ${d.date}</div>
             </div>
             <div style="text-align:right">
               <div><strong>${fmtEuro(d.total)}</strong></div>
@@ -78,16 +107,146 @@ async function renderList(container) {
   });
 }
 
+function hourlyBlockHtml(type, svc, defaultRate) {
+  const label = SERVICE_LABELS[type];
+  return `
+    <div class="card" id="svc-block-${type}" style="display:none;background:var(--fill);border:none">
+      <h3 style="margin-top:0">${label}</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label>Heures estimées</label>
+          <input type="number" step="any" min="0" id="${type}-hours-input" value="${svc?.hours ?? 1}">
+        </div>
+        <div class="field">
+          <label>Taux horaire (€/h)</label>
+          <input type="number" step="any" min="0" id="${type}-rate-input" value="${svc?.rate ?? defaultRate}">
+        </div>
+      </div>
+      <div class="card-row"><span class="muted">Sous-total</span><strong id="${type}-subtotal">—</strong></div>
+    </div>
+  `;
+}
+
+function vitresBlockHtml(svc, settings) {
+  const tiers = settings.windowTiers;
+  const surcharges = settings.windowSurcharges;
+  return `
+    <div class="card" id="svc-block-vitres" style="display:none;background:var(--fill);border:none">
+      <h3 style="margin-top:0">Nettoyage vitres</h3>
+      <div class="field">
+        <label>Mode de tarification</label>
+        <select id="vitres-mode-select">
+          <option value="grille" ${svc?.pricingMode !== "horaire" ? "selected" : ""}>Grille par taille de maison</option>
+          <option value="horaire" ${svc?.pricingMode === "horaire" ? "selected" : ""}>Taux horaire</option>
+        </select>
+      </div>
+
+      <div id="vitres-hourly-fields">
+        <div class="grid-2">
+          <div class="field">
+            <label>Heures estimées</label>
+            <input type="number" step="any" min="0" id="vitres-hours-input" value="${svc?.hours ?? 1}">
+          </div>
+          <div class="field">
+            <label>Taux horaire (€/h)</label>
+            <input type="number" step="any" min="0" id="vitres-rate-input" value="${svc?.rate ?? settings.rateHainautMin}">
+          </div>
+        </div>
+      </div>
+
+      <div id="vitres-grille-fields">
+        <div class="field">
+          <label>Catégorie de maison</label>
+          <select id="vitres-tier-select">
+            ${Object.entries(tiers).map(([key, t]) => `<option value="${key}" ${svc?.tier === key ? "selected" : ""}>${t.label}</option>`).join("")}
+          </select>
+          <p class="muted" id="vitres-tier-hint"></p>
+        </div>
+        <div id="vitres-tier-normal-fields">
+          <div class="grid-2">
+            <div class="field">
+              <label>Formule</label>
+              <select id="vitres-tier-formule-select">
+                <option value="ext" ${svc?.tierFormule === "ext" ? "selected" : ""}>${FORMULE_LABELS.ext}</option>
+                <option value="full" ${svc?.tierFormule === "full" ? "selected" : ""}>${FORMULE_LABELS.full}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Type de passage</label>
+              <select id="vitres-tier-type-select">
+                <option value="ponctuel" ${svc?.tierType === "ponctuel" ? "selected" : ""}>${TYPE_LABELS.ponctuel}</option>
+                <option value="abonnement" ${svc?.tierType === "abonnement" ? "selected" : ""}>${TYPE_LABELS.abonnement}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Prix retenu (€)</label>
+          <input type="number" step="any" min="0" id="vitres-tier-price-input" value="${svc?.tierPrice ?? ""}">
+          <p class="muted" id="vitres-tier-range-hint"></p>
+        </div>
+        <div id="vitres-surcharges">
+          ${Object.entries(surcharges).map(([key, s]) => {
+            const chosen = svc?.surcharges?.find((x) => x.key === key);
+            return `
+            <div class="checkbox-row">
+              <input type="checkbox" id="vitres-surcharge-${key}" ${chosen ? "checked" : ""}>
+              <label for="vitres-surcharge-${key}" style="margin:0;font-weight:400;flex:1;color:var(--text)">${s.label} (+${fmtRange(s)})</label>
+              <input type="number" step="any" min="0" id="vitres-surcharge-amount-${key}" value="${chosen ? chosen.amount : s.min}" style="width:80px;margin:0;${chosen ? "" : "display:none"}">
+            </div>
+          `;
+          }).join("")}
+        </div>
+      </div>
+      <div class="card-row"><span class="muted">Sous-total</span><strong id="vitres-subtotal">—</strong></div>
+    </div>
+  `;
+}
+
+function panneauxBlockHtml(svc, settings) {
+  return `
+    <div class="card" id="svc-block-panneaux" style="display:none;background:var(--fill);border:none">
+      <h3 style="margin-top:0">Nettoyage panneaux solaires</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label>Nombre de panneaux</label>
+          <input type="number" step="1" min="0" id="panneaux-count-input" value="${svc?.panelCount ?? 0}">
+        </div>
+        <div class="field">
+          <label>Eau osmosée (forfait €)</label>
+          <input type="number" step="any" min="0" id="panneaux-osmosis-input" value="${svc?.osmosisWaterFee ?? settings.osmosisWaterFee}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Prix par panneau — glissez pour ajuster selon la situation</label>
+        <div class="slider-wrapper">
+          <div class="slider-bubble" id="panneaux-price-bubble">0 €</div>
+          <input type="range" id="panneaux-price-slider" min="2" max="15" step="0.5" value="${svc?.panelPrice ?? settings.solarPanelPrice}">
+        </div>
+        <div class="card-row" style="margin-top:0">
+          <span class="muted" style="font-size:11px">2 €</span>
+          <span class="muted" style="font-size:11px">15 €</span>
+        </div>
+      </div>
+      <p class="muted" id="panneaux-hint"></p>
+      <div class="card-row"><span class="muted">Sous-total</span><strong id="panneaux-subtotal">—</strong></div>
+    </div>
+  `;
+}
+
 async function renderForm(container, id) {
   const devis = id ? await Store.get("devis", id) : null;
   const settings = await getSettings();
   const clients = await Store.getAll("clients");
   clients.sort((a, b) => a.name.localeCompare(b.name));
 
+  const existingServices = getServicesArray(devis);
+  const svcByType = Object.fromEntries(existingServices.map((s) => [s.serviceType, s]));
+  const checkedTypes = new Set(existingServices.map((s) => s.serviceType));
+
   const initialClient = devis?.clientId ? clients.find((c) => c.id === devis.clientId) : null;
-  const initialRegion = devis?.region || (initialClient ? classifyRegion(initialClient.postalCode) : "Hainaut");
-  const tiers = settings.windowTiers;
-  const surcharges = settings.windowSurcharges;
+  const initialRegion = svcByType.vitres?.region || svcByType.veranda?.region || (initialClient ? classifyRegion(initialClient.postalCode) : "Hainaut");
+  const [defaultRate] = regionRateRange(initialRegion, settings);
 
   container.innerHTML = `
     <button class="back-btn" id="back-btn">‹ Retour</button>
@@ -105,111 +264,27 @@ async function renderForm(container, id) {
         <input name="clientName" value="${escapeHtml(devis?.clientName || "")}" placeholder="Nom / société">
       </div>
 
+      <label>Prestations * (choisissez-en une ou plusieurs)</label>
       <div class="field">
-        <label>Prestation *</label>
-        <select name="serviceType" id="service-select" required>
-          ${Object.entries(SERVICE_LABELS).map(([k, l]) => `<option value="${k}" ${devis?.serviceType === k ? "selected" : ""}>${l}</option>`).join("")}
-        </select>
-      </div>
-
-      <div class="field" id="pricing-mode-field" style="display:none">
-        <label>Mode de tarification</label>
-        <select id="pricing-mode-select">
-          <option value="grille" ${devis?.pricingMode !== "horaire" ? "selected" : ""}>Grille par taille de maison</option>
-          <option value="horaire" ${devis?.pricingMode === "horaire" ? "selected" : ""}>Taux horaire</option>
-        </select>
+        ${SERVICE_ORDER.map((type) => `
+          <div class="checkbox-row">
+            <input type="checkbox" id="svc-check-${type}" ${checkedTypes.has(type) ? "checked" : ""}>
+            <label for="svc-check-${type}" style="margin:0;font-weight:400;color:var(--text)">${SERVICE_LABELS[type]}</label>
+          </div>
+        `).join("")}
       </div>
 
       <div class="field" id="region-field">
         <label>Région (taux horaire)</label>
-        <select name="region" id="region-select">
+        <select id="region-select">
           <option value="Hainaut" ${initialRegion === "Hainaut" ? "selected" : ""}>Hainaut (${settings.rateHainautMin}-${settings.rateHainautMax} €/h)</option>
           <option value="Bruxelles" ${initialRegion === "Bruxelles" ? "selected" : ""}>Bruxelles (${settings.rateBruxellesMin}-${settings.rateBruxellesMax} €/h)</option>
         </select>
       </div>
 
-      <div id="hourly-fields">
-        <div class="grid-2">
-          <div class="field">
-            <label>Heures estimées</label>
-            <input type="number" step="any" min="0" name="hours" id="hours-input" value="${devis?.hours ?? 1}">
-          </div>
-          <div class="field">
-            <label>Taux horaire (€/h)</label>
-            <input type="number" step="any" min="0" name="rate" id="rate-input" value="${devis?.rate ?? settings.rateHainautMin}">
-          </div>
-        </div>
-      </div>
-
-      <div id="panel-fields" style="display:none">
-        <div class="grid-2">
-          <div class="field">
-            <label>Nombre de panneaux</label>
-            <input type="number" step="1" min="0" name="panelCount" id="panel-input" value="${devis?.panelCount ?? 0}">
-          </div>
-          <div class="field">
-            <label>Eau osmosée (forfait €)</label>
-            <input type="number" step="any" min="0" name="osmosisWaterFee" id="osmosis-input" value="${devis?.osmosisWaterFee ?? settings.osmosisWaterFee}">
-          </div>
-        </div>
-        <div class="field">
-          <label>Prix par panneau — glissez pour ajuster selon la situation</label>
-          <div class="slider-wrapper">
-            <div class="slider-bubble" id="panel-price-bubble">0 €</div>
-            <input type="range" name="panelPrice" id="panel-price-slider" min="2" max="15" step="0.5" value="${devis?.panelPrice ?? settings.solarPanelPrice}">
-          </div>
-          <div class="card-row" style="margin-top:0">
-            <span class="muted" style="font-size:11px">2 €</span>
-            <span class="muted" style="font-size:11px">15 €</span>
-          </div>
-        </div>
-        <p class="muted" id="panel-hint"></p>
-      </div>
-
-      <div id="grille-fields" style="display:none">
-        <div class="field">
-          <label>Catégorie de maison</label>
-          <select id="tier-select">
-            ${Object.entries(tiers).map(([key, t]) => `<option value="${key}" ${devis?.tier === key ? "selected" : ""}>${t.label}</option>`).join("")}
-          </select>
-          <p class="muted" id="tier-hint"></p>
-        </div>
-        <div id="tier-normal-fields">
-          <div class="grid-2">
-            <div class="field">
-              <label>Formule</label>
-              <select id="tier-formule-select">
-                <option value="ext" ${devis?.tierFormule === "ext" ? "selected" : ""}>${FORMULE_LABELS.ext}</option>
-                <option value="full" ${devis?.tierFormule === "full" ? "selected" : ""}>${FORMULE_LABELS.full}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Type de passage</label>
-              <select id="tier-type-select">
-                <option value="ponctuel" ${devis?.tierType === "ponctuel" ? "selected" : ""}>${TYPE_LABELS.ponctuel}</option>
-                <option value="abonnement" ${devis?.tierType === "abonnement" ? "selected" : ""}>${TYPE_LABELS.abonnement}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="field">
-          <label>Prix retenu (€)</label>
-          <input type="number" step="any" min="0" id="tier-price-input" value="${devis?.tierPrice ?? ""}">
-          <p class="muted" id="tier-range-hint"></p>
-        </div>
-        <div id="tier-surcharges">
-          ${Object.entries(surcharges).map(([key, s]) => {
-            const chosen = devis?.surcharges?.find((x) => x.key === key);
-            return `
-            <div class="checkbox-row">
-              <input type="checkbox" id="surcharge-${key}" ${chosen ? "checked" : ""}>
-              <label for="surcharge-${key}" style="margin:0;font-weight:400;flex:1;color:var(--text)">${s.label} (+${fmtRange(s)})</label>
-              <input type="number" step="any" min="0" id="surcharge-amount-${key}" value="${chosen ? chosen.amount : s.min}" style="width:80px;margin:0;${chosen ? "" : "display:none"}">
-            </div>
-          `;
-          }).join("")}
-        </div>
-      </div>
+      ${vitresBlockHtml(svcByType.vitres, settings)}
+      ${HOURLY_ONLY_TYPES.map((type) => hourlyBlockHtml(type, svcByType[type], defaultRate)).join("")}
+      ${panneauxBlockHtml(svcByType.panneaux, settings)}
 
       <div class="field">
         <label>Distance depuis Gerpinnes, aller simple (km)</label>
@@ -298,70 +373,65 @@ async function renderForm(container, id) {
 
   const clientSelect = container.querySelector("#client-select");
   const manualNameField = container.querySelector("#manual-name-field");
-  const serviceSelect = container.querySelector("#service-select");
-  const pricingModeField = container.querySelector("#pricing-mode-field");
-  const pricingModeSelect = container.querySelector("#pricing-mode-select");
   const regionField = container.querySelector("#region-field");
   const regionSelect = container.querySelector("#region-select");
-  const hourlyFields = container.querySelector("#hourly-fields");
-  const panelFields = container.querySelector("#panel-fields");
-  const panelPriceSlider = container.querySelector("#panel-price-slider");
-  const panelPriceBubble = container.querySelector("#panel-price-bubble");
-  const grilleFields = container.querySelector("#grille-fields");
-  const tierNormalFields = container.querySelector("#tier-normal-fields");
-  const tierSelect = container.querySelector("#tier-select");
-  const tierFormuleSelect = container.querySelector("#tier-formule-select");
-  const tierTypeSelect = container.querySelector("#tier-type-select");
-  const tierPriceInput = container.querySelector("#tier-price-input");
-  const tierRangeHint = container.querySelector("#tier-range-hint");
-  const tierHint = container.querySelector("#tier-hint");
-  const rateInput = container.querySelector("#rate-input");
+  const travelInput = container.querySelector("#travel-input");
 
-  function currentMode() {
-    if (serviceSelect.value === "panneaux") return "panneaux";
-    if (serviceSelect.value === "vitres" && pricingModeSelect.value === "grille") return "grille";
-    return "horaire";
+  const vitresModeSelect = container.querySelector("#vitres-mode-select");
+  const vitresHourlyFields = container.querySelector("#vitres-hourly-fields");
+  const vitresGrilleFields = container.querySelector("#vitres-grille-fields");
+  const vitresTierSelect = container.querySelector("#vitres-tier-select");
+  const vitresTierNormalFields = container.querySelector("#vitres-tier-normal-fields");
+  const vitresTierFormuleSelect = container.querySelector("#vitres-tier-formule-select");
+  const vitresTierTypeSelect = container.querySelector("#vitres-tier-type-select");
+  const vitresTierPriceInput = container.querySelector("#vitres-tier-price-input");
+  const vitresTierRangeHint = container.querySelector("#vitres-tier-range-hint");
+  const vitresTierHint = container.querySelector("#vitres-tier-hint");
+  const vitresRateInput = container.querySelector("#vitres-rate-input");
+
+  const panneauxPriceSlider = container.querySelector("#panneaux-price-slider");
+  const panneauxPriceBubble = container.querySelector("#panneaux-price-bubble");
+
+  const tiers = settings.windowTiers;
+  const surcharges = settings.windowSurcharges;
+
+  function isChecked(type) {
+    return container.querySelector(`#svc-check-${type}`).checked;
   }
 
-  function updatePanelPriceBubble() {
-    const min = parseFloat(panelPriceSlider.min);
-    const max = parseFloat(panelPriceSlider.max);
-    const val = parseFloat(panelPriceSlider.value);
-    const pct = (val - min) / (max - min);
-    const sliderWidth = panelPriceSlider.offsetWidth;
-    const thumbWidth = 20;
-    const x = pct * (sliderWidth - thumbWidth) + thumbWidth / 2;
-    panelPriceBubble.style.left = `${x}px`;
-    panelPriceBubble.textContent = `${val} €/panneau`;
+  function updateVitresVisibility() {
+    const showGrille = vitresModeSelect.value === "grille";
+    vitresHourlyFields.style.display = showGrille ? "none" : "";
+    vitresGrilleFields.style.display = showGrille ? "" : "none";
   }
 
-  function updateTierPriceSuggestion(forceOverwrite) {
-    const tierKey = tierSelect.value;
+  function updateVitresTierSuggestion(forceOverwrite) {
+    const tierKey = vitresTierSelect.value;
     const t = tiers[tierKey];
-    tierHint.textContent = t.hint || "";
+    vitresTierHint.textContent = t.hint || "";
     if (tierKey === "tresGrande") {
-      tierNormalFields.style.display = "none";
-      tierRangeHint.textContent = `Cas spécial, sur devis uniquement — à partir de ${t.startingAt} €.`;
-      if (forceOverwrite || !tierPriceInput.value) tierPriceInput.value = t.startingAt;
+      vitresTierNormalFields.style.display = "none";
+      vitresTierRangeHint.textContent = `Cas spécial, sur devis uniquement — à partir de ${t.startingAt} €.`;
+      if (forceOverwrite || !vitresTierPriceInput.value) vitresTierPriceInput.value = t.startingAt;
       return;
     }
-    tierNormalFields.style.display = "";
-    const formule = tierFormuleSelect.value;
-    const type = tierTypeSelect.value;
+    vitresTierNormalFields.style.display = "";
+    const formule = vitresTierFormuleSelect.value;
+    const type = vitresTierTypeSelect.value;
     const range = type === "abonnement" ? (formule === "full" ? t.subFull : t.subExt) : (formule === "full" ? t.full : t.ext);
     const freqNote = type === "abonnement" && t.subFrequency ? ` (${t.subFrequency})` : "";
-    tierRangeHint.textContent = `Fourchette conseillée : ${fmtRange(range)}${freqNote}`;
+    vitresTierRangeHint.textContent = `Fourchette conseillée : ${fmtRange(range)}${freqNote}`;
     if (forceOverwrite) {
-      tierPriceInput.value = Math.round((range.min + range.max) / 2);
+      vitresTierPriceInput.value = Math.round((range.min + range.max) / 2);
     }
   }
 
-  function surchargesTotal() {
+  function vitresSurchargesTotal() {
     let sum = 0;
     const chosen = [];
     Object.entries(surcharges).forEach(([key, s]) => {
-      const checkbox = container.querySelector(`#surcharge-${key}`);
-      const amountInput = container.querySelector(`#surcharge-amount-${key}`);
+      const checkbox = container.querySelector(`#vitres-surcharge-${key}`);
+      const amountInput = container.querySelector(`#vitres-surcharge-amount-${key}`);
       amountInput.style.display = checkbox.checked ? "" : "none";
       if (checkbox.checked) {
         const amount = parseFloat(amountInput.value) || 0;
@@ -372,48 +442,105 @@ async function renderForm(container, id) {
     return { sum, chosen };
   }
 
-  function recompute() {
-    const mode = currentMode();
-    pricingModeField.style.display = serviceSelect.value === "vitres" ? "" : "none";
-    const showHourly = mode === "horaire";
-    const showGrille = mode === "grille";
-    const showPanels = mode === "panneaux";
-    regionField.style.display = showHourly ? "" : "none";
-    hourlyFields.style.display = showHourly ? "" : "none";
-    grilleFields.style.display = showGrille ? "" : "none";
-    panelFields.style.display = showPanels ? "" : "none";
+  function updatePanneauxPriceBubble() {
+    const min = parseFloat(panneauxPriceSlider.min);
+    const max = parseFloat(panneauxPriceSlider.max);
+    const val = parseFloat(panneauxPriceSlider.value);
+    const pct = (val - min) / (max - min);
+    const sliderWidth = panneauxPriceSlider.offsetWidth;
+    const thumbWidth = 20;
+    const x = pct * (sliderWidth - thumbWidth) + thumbWidth / 2;
+    panneauxPriceBubble.style.left = `${x}px`;
+    panneauxPriceBubble.textContent = `${val} €/panneau`;
+  }
 
+  function computeVitresLine() {
+    if (vitresModeSelect.value === "grille") {
+      const base = parseFloat(vitresTierPriceInput.value) || 0;
+      const { sum, chosen } = vitresSurchargesTotal();
+      return {
+        total: base + sum,
+        detail: {
+          pricingMode: "grille",
+          tier: vitresTierSelect.value,
+          tierFormule: vitresTierSelect.value !== "tresGrande" ? vitresTierFormuleSelect.value : null,
+          tierType: vitresTierSelect.value !== "tresGrande" ? vitresTierTypeSelect.value : null,
+          tierPrice: base,
+          surcharges: chosen,
+        },
+      };
+    }
+    const hours = parseFloat(vitresHourlyFields.querySelector("#vitres-hours-input").value) || 0;
+    const rate = parseFloat(vitresRateInput.value) || 0;
+    return { total: hours * rate, detail: { pricingMode: "horaire", hours, rate } };
+  }
+
+  function computeHourlyLine(type) {
+    const hours = parseFloat(container.querySelector(`#${type}-hours-input`).value) || 0;
+    const rate = parseFloat(container.querySelector(`#${type}-rate-input`).value) || 0;
+    return { total: hours * rate, detail: { hours, rate } };
+  }
+
+  function computePanneauxLine() {
+    const count = parseFloat(container.querySelector("#panneaux-count-input").value) || 0;
+    const price = parseFloat(panneauxPriceSlider.value) || 0;
+    const osmosis = parseFloat(container.querySelector("#panneaux-osmosis-input").value) || 0;
+    updatePanneauxPriceBubble();
+    container.querySelector("#panneaux-hint").textContent = `${price} €/panneau × ${count} + ${fmtEuro(osmosis)} d'eau osmosée`;
+    return { total: count * price + osmosis, detail: { panelCount: count, panelPrice: price, osmosisWaterFee: osmosis } };
+  }
+
+  function recompute() {
     let labor = 0;
-    if (showPanels) {
-      const count = parseFloat(container.querySelector("#panel-input").value) || 0;
-      const osmosis = parseFloat(container.querySelector("#osmosis-input").value) || 0;
-      const panelPrice = parseFloat(panelPriceSlider.value) || 0;
-      labor = count * panelPrice + osmosis;
-      container.querySelector("#panel-hint").textContent = `${panelPrice} €/panneau × ${count} + ${fmtEuro(osmosis)} d'eau osmosée`;
-      updatePanelPriceBubble();
-    } else if (showGrille) {
-      const base = parseFloat(tierPriceInput.value) || 0;
-      const { sum } = surchargesTotal();
-      labor = base + sum;
-    } else {
-      const hours = parseFloat(container.querySelector("#hours-input").value) || 0;
-      const rate = parseFloat(rateInput.value) || 0;
-      labor = hours * rate;
+    const lineResults = {};
+    let anyHourly = false;
+
+    for (const type of SERVICE_ORDER) {
+      const block = container.querySelector(`#svc-block-${type}`);
+      const checked = isChecked(type);
+      block.style.display = checked ? "" : "none";
+      if (!checked) continue;
+
+      let result;
+      if (type === "vitres") {
+        result = computeVitresLine();
+        if (result.detail.pricingMode === "horaire") anyHourly = true;
+      } else if (type === "panneaux") {
+        result = computePanneauxLine();
+      } else {
+        result = computeHourlyLine(type);
+        anyHourly = true;
+      }
+      lineResults[type] = result;
+      labor += result.total;
+      const subtotalEl = container.querySelector(`#${type}-subtotal`);
+      if (subtotalEl) subtotalEl.textContent = fmtEuro(result.total);
     }
 
-    const km = parseFloat(container.querySelector("#travel-input").value) || 0;
+    regionField.style.display = anyHourly ? "" : "none";
+
+    const km = parseFloat(travelInput.value) || 0;
     const travelFee = km * 2 * settings.travelFeePerKm;
 
     container.querySelector("#labor-out").textContent = fmtEuro(labor);
     container.querySelector("#travel-out").textContent = fmtEuro(travelFee);
     container.querySelector("#total-out").textContent = fmtEuro(labor + travelFee);
 
-    return { labor, travelFee, total: labor + travelFee };
+    return { labor, travelFee, total: labor + travelFee, lineResults };
   }
 
   function applyRegionDefaults() {
     const [min] = regionRateRange(regionSelect.value, settings);
-    if (!devis) rateInput.value = min;
+    if (!devis) {
+      if (!isChecked("vitres") || vitresModeSelect.value === "horaire") {
+        const el = container.querySelector("#vitres-rate-input");
+        if (el) el.value = min;
+      }
+      HOURLY_ONLY_TYPES.forEach((type) => {
+        const el = container.querySelector(`#${type}-rate-input`);
+        if (el) el.value = min;
+      });
+    }
     recompute();
   }
 
@@ -425,40 +552,42 @@ async function renderForm(container, id) {
       const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
       const dest = c.lat != null ? { lat: c.lat, lng: c.lng } : null;
       const dist = haversineKm(base, dest);
-      if (dist != null) container.querySelector("#travel-input").value = Math.round(dist * 10) / 10;
+      if (dist != null) travelInput.value = Math.round(dist * 10) / 10;
       applyRegionDefaults();
     }
   });
 
-  serviceSelect.addEventListener("change", () => {
-    if (serviceSelect.value === "vitres" && !devis) updateTierPriceSuggestion(true);
+  SERVICE_ORDER.forEach((type) => {
+    container.querySelector(`#svc-check-${type}`).addEventListener("change", () => recompute());
+  });
+
+  vitresModeSelect.addEventListener("change", () => {
+    updateVitresVisibility();
+    if (!devis) updateVitresTierSuggestion(true);
     recompute();
   });
-  pricingModeSelect.addEventListener("change", () => {
-    if (!devis) updateTierPriceSuggestion(true);
+  vitresTierSelect.addEventListener("change", () => {
+    updateVitresTierSuggestion(!devis);
     recompute();
   });
-  tierSelect.addEventListener("change", () => {
-    updateTierPriceSuggestion(!devis);
+  vitresTierFormuleSelect.addEventListener("change", () => {
+    updateVitresTierSuggestion(!devis);
     recompute();
   });
-  tierFormuleSelect.addEventListener("change", () => {
-    updateTierPriceSuggestion(!devis);
-    recompute();
-  });
-  tierTypeSelect.addEventListener("change", () => {
-    updateTierPriceSuggestion(!devis);
+  vitresTierTypeSelect.addEventListener("change", () => {
+    updateVitresTierSuggestion(!devis);
     recompute();
   });
   Object.keys(surcharges).forEach((key) => {
-    container.querySelector(`#surcharge-${key}`).addEventListener("change", recompute);
+    container.querySelector(`#vitres-surcharge-${key}`).addEventListener("change", recompute);
   });
 
   regionSelect.addEventListener("change", applyRegionDefaults);
   form.addEventListener("input", recompute);
 
-  if (!devis) updateTierPriceSuggestion(true);
-  else updateTierPriceSuggestion(false);
+  updateVitresVisibility();
+  if (!devis) updateVitresTierSuggestion(true);
+  else updateVitresTierSuggestion(false);
   recompute();
 
   container.querySelector("#back-btn").addEventListener("click", () => {
@@ -481,10 +610,19 @@ async function renderForm(container, id) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const mode = currentMode();
     const totals = recompute();
     const client = clients.find((c) => c.id === fd.get("clientId"));
-    const { chosen: chosenSurcharges } = surchargesTotal();
+
+    const services = SERVICE_ORDER.filter((type) => isChecked(type)).map((type) => ({
+      serviceType: type,
+      lineTotal: totals.lineResults[type].total,
+      ...totals.lineResults[type].detail,
+    }));
+
+    if (services.length === 0) {
+      showToast("Sélectionnez au moins une prestation");
+      return;
+    }
 
     const record = {
       id: devis?.id,
@@ -492,19 +630,8 @@ async function renderForm(container, id) {
       clientId: fd.get("clientId") || null,
       clientName: client ? client.name : fd.get("clientName")?.trim() || "Client",
       clientAddress: client ? `${client.address}, ${client.postalCode} ${client.city}` : "",
-      serviceType: fd.get("serviceType"),
-      pricingMode: fd.get("serviceType") === "vitres" ? mode : null,
-      region: fd.get("region"),
-      hours: mode === "horaire" ? parseFloat(fd.get("hours")) || 0 : null,
-      rate: mode === "horaire" ? parseFloat(fd.get("rate")) || 0 : null,
-      panelCount: mode === "panneaux" ? parseFloat(fd.get("panelCount")) || 0 : null,
-      panelPrice: mode === "panneaux" ? parseFloat(fd.get("panelPrice")) || 0 : null,
-      osmosisWaterFee: mode === "panneaux" ? parseFloat(fd.get("osmosisWaterFee")) || 0 : null,
-      tier: mode === "grille" ? tierSelect.value : null,
-      tierFormule: mode === "grille" && tierSelect.value !== "tresGrande" ? tierFormuleSelect.value : null,
-      tierType: mode === "grille" && tierSelect.value !== "tresGrande" ? tierTypeSelect.value : null,
-      tierPrice: mode === "grille" ? parseFloat(tierPriceInput.value) || 0 : null,
-      surcharges: mode === "grille" ? chosenSurcharges : [],
+      services,
+      region: regionSelect.value,
       travelKm: parseFloat(fd.get("travelKm")) || 0,
       travelFee: totals.travelFee,
       laborCost: totals.labor,
@@ -560,19 +687,16 @@ async function generatePdf(devis, settings) {
     doc.text(devis.clientAddress, marginX, y);
   }
 
+  const servicesArr = getServicesArray(devis);
+
   y += 14;
   doc.setFontSize(11);
   doc.setTextColor(60, 60, 60);
-  doc.text("Prestation", marginX, y);
+  doc.text("Prestations", marginX, y);
   y += 6;
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
-  let serviceLine = SERVICE_LABELS[devis.serviceType] || devis.serviceType;
-  if (devis.pricingMode === "grille" && devis.tier) {
-    const t = settings.windowTiers[devis.tier];
-    serviceLine += ` — ${t.label}`;
-    if (devis.tierFormule) serviceLine += `, ${FORMULE_LABELS[devis.tierFormule]}, ${TYPE_LABELS[devis.tierType]}`;
-  }
+  const serviceLine = servicesArr.map((s) => SERVICE_LABELS[s.serviceType] || s.serviceType).join(", ");
   doc.text(serviceLine, marginX, y);
 
   if (devis.notes) {
@@ -591,15 +715,20 @@ async function generatePdf(devis, settings) {
 
   doc.setFontSize(11);
   const rows = [];
-  if (devis.serviceType === "panneaux") {
-    const panelPrice = devis.panelPrice ?? settings.solarPanelPrice;
-    rows.push([`Nettoyage panneaux solaires (${devis.panelCount} × ${panelPrice} €)`, fmtEuro(devis.panelCount * panelPrice)]);
-    rows.push(["Eau osmosée (forfait)", fmtEuro(devis.osmosisWaterFee)]);
-  } else if (devis.pricingMode === "grille") {
-    rows.push(["Forfait nettoyage vitres", fmtEuro(devis.tierPrice)]);
-    (devis.surcharges || []).forEach((s) => rows.push([s.label, fmtEuro(s.amount)]));
-  } else {
-    rows.push([`Main d'œuvre (${devis.hours} h × ${devis.rate} €/h)`, fmtEuro(devis.laborCost)]);
+  for (const svc of servicesArr) {
+    const label = SERVICE_LABELS[svc.serviceType] || svc.serviceType;
+    if (svc.serviceType === "panneaux") {
+      const panelPrice = svc.panelPrice ?? settings.solarPanelPrice;
+      rows.push([`${label} (${svc.panelCount} × ${panelPrice} €)`, fmtEuro(svc.panelCount * panelPrice)]);
+      rows.push(["Eau osmosée (forfait)", fmtEuro(svc.osmosisWaterFee)]);
+    } else if (svc.pricingMode === "grille") {
+      let desc = `${label} — ${settings.windowTiers[svc.tier]?.label || ""}`;
+      if (svc.tierFormule) desc += `, ${FORMULE_LABELS[svc.tierFormule]}, ${TYPE_LABELS[svc.tierType]}`;
+      rows.push([desc, fmtEuro(svc.tierPrice)]);
+      (svc.surcharges || []).forEach((s) => rows.push([`  ${s.label}`, fmtEuro(s.amount)]));
+    } else {
+      rows.push([`${label} (${svc.hours} h × ${svc.rate} €/h)`, fmtEuro((svc.hours || 0) * (svc.rate || 0))]);
+    }
   }
   if (devis.travelFee) {
     rows.push([`Déplacement (${devis.travelKm} km aller-retour × 2)`, fmtEuro(devis.travelFee)]);

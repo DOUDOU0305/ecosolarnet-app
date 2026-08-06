@@ -1,6 +1,7 @@
 import { Store, getSettings } from "../db.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { wazeUrl } from "../geo.js";
+import { monthLabel } from "../scheduling.js";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -76,6 +77,8 @@ export async function renderYear(container, year) {
 
 export async function renderMonth(container, monthStr) {
   const [year, month] = monthStr.split("-").map(Number);
+  const settings = await getSettings();
+  const defenseCodes = settings.defenseDayCodes || [];
   const entries = await Store.getAll("planningEntries");
   const entryByDate = new Map(entries.map((e) => [e.date, e]));
 
@@ -89,12 +92,13 @@ export async function renderMonth(container, monthStr) {
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${pad2(month)}-${pad2(d)}`;
     const entry = entryByDate.get(dateStr);
+    const isDefense = entry && !entry.tourneeId && defenseCodes.includes(entry.label);
     const isToday = dateStr === today;
     cells += `
       <button type="button" class="cal-day-btn${isToday ? " cal-today" : ""}" data-date="${dateStr}"
-        style="aspect-ratio:1;border:1px solid ${isToday ? "var(--danger)" : "var(--border)"};border-radius:8px;background:${entry ? "var(--teal-light)" : "white"};font-family:inherit;font-size:13px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer">
+        style="aspect-ratio:1;border:1px solid ${isToday ? "var(--danger)" : "var(--border)"};border-radius:8px;background:${isDefense ? "rgba(201,151,79,0.16)" : entry ? "var(--teal-light)" : "white"};font-family:inherit;font-size:13px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer">
         <span style="${isToday ? "background:var(--danger);color:white;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700" : "font-weight:400"}">${d}</span>
-        ${entry ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--teal-dark)"></span>` : ""}
+        ${isDefense ? `<span style="font-size:9px;color:var(--sun-text);font-weight:600">${escapeHtml(entry.label)}</span>` : entry ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--teal-dark)"></span>` : ""}
       </button>
     `;
   }
@@ -211,6 +215,9 @@ export async function renderDay(container, dateStr) {
     }
   }
 
+  const defenseCodes = settings.defenseDayCodes || [];
+  let currentDefenseCode = (!existingEntry?.tourneeId && existingEntry?.label && defenseCodes.includes(existingEntry.label)) ? existingEntry.label : "";
+
   const dateObj = new Date(dateStr + "T12:00:00");
   const totalMinutes = DAY_END - DAY_START;
   const timelineHeight = totalMinutes * PX_PER_MIN;
@@ -221,11 +228,24 @@ export async function renderDay(container, dateStr) {
     <button class="back-btn" id="back-to-month">‹ ${MONTHS[dateObj.getMonth()]} ${dateObj.getFullYear()}</button>
     <h1 style="text-transform:capitalize">${dateObj.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</h1>
 
-    <div class="field" style="max-width:260px">
+    ${defenseCodes.length > 0 ? `
+      <div class="field" style="max-width:260px">
+        <label>Jour spécial (Défense)</label>
+        <select id="defense-day-select">
+          <option value="">— Aucun —</option>
+          ${defenseCodes.map((code) => `<option value="${escapeHtml(code)}" ${currentDefenseCode === code ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}
+        </select>
+      </div>
+    ` : ""}
+
+    <div id="defense-notice"></div>
+
+    <div class="field" style="max-width:260px" id="add-client-field">
       <select id="add-client-select">
         <option value="">— Ajouter un client à ce jour —</option>
         ${allClients.filter((c) => !dayClients.some((dc) => dc.id === c.id)).map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
       </select>
+      <button type="button" class="btn secondary block" id="replace-slot-btn" style="margin-top:8px">🔄 Remplacer un créneau libre</button>
     </div>
 
     <div class="card" style="padding:0;overflow:visible">
@@ -248,6 +268,51 @@ export async function renderDay(container, dateStr) {
   container.querySelector("#back-to-month").addEventListener("click", () => {
     location.hash = `#/planning/month-${dateStr.slice(0, 7)}`;
   });
+
+  function renderDefenseNotice() {
+    const notice = container.querySelector("#defense-notice");
+    const addClientField = container.querySelector("#add-client-field");
+    if (currentDefenseCode) {
+      notice.innerHTML = `
+        <div class="card" style="background:rgba(201,151,79,0.14);border:none">
+          <strong>🪖 Jour de Défense : ${escapeHtml(currentDefenseCode)}</strong>
+          <p class="muted" style="margin:4px 0 0">Aucun client ne peut être ajouté ce jour-là. Choisissez "— Aucun —" ci-dessus pour libérer ce jour.</p>
+        </div>
+      `;
+      if (addClientField) addClientField.style.display = "none";
+    } else {
+      notice.innerHTML = "";
+      if (addClientField) addClientField.style.display = "";
+    }
+  }
+  renderDefenseNotice();
+
+  const defenseSelect = container.querySelector("#defense-day-select");
+  if (defenseSelect) {
+    defenseSelect.addEventListener("change", async (e) => {
+      currentDefenseCode = e.target.value;
+      await saveDefenseDay(currentDefenseCode);
+      renderDefenseNotice();
+      renderBlocks();
+      refreshAddSelect();
+      showToast(currentDefenseCode ? `Jour marqué : ${currentDefenseCode}` : "Jour libéré");
+    });
+  }
+
+  async function saveDefenseDay(code) {
+    const existingTimes = await Store.getAll("visitTimes");
+    for (const t of existingTimes.filter((t) => t.date === dateStr)) await Store.delete("visitTimes", t.id);
+    dayClients = [];
+    dayTourneeId = null;
+
+    const currentEntries = await Store.getAll("planningEntries");
+    const current = currentEntries.find((p) => p.date === dateStr);
+    if (code) {
+      await Store.put("planningEntries", { id: current?.id, date: dateStr, tourneeId: null, label: code });
+    } else if (current) {
+      await Store.delete("planningEntries", current.id);
+    }
+  }
 
   function renderBlocks() {
     const layer = container.querySelector("#blocks-layer");
@@ -364,9 +429,9 @@ export async function renderDay(container, dateStr) {
       dayClients.splice(idx, 1);
       await persistDay();
       renderBlocks();
-      editor.innerHTML = "";
       refreshAddSelect();
       showToast("Client retiré de ce jour");
+      openReplaceSlotPanel();
     });
     editor.querySelector("#edit-close-btn").addEventListener("click", () => {
       editor.innerHTML = "";
@@ -380,6 +445,174 @@ export async function renderDay(container, dateStr) {
       ${allClients.filter((c) => !dayClients.some((dc) => dc.id === c.id)).map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
     `;
   }
+
+  // --- "Remplacer un créneau libre" : avance de rentrer, avancer un client
+  // déjà planifié plus tard, ou proposer le créneau à un client en attente.
+
+  function addToTodayFromCandidate(clientInfo, durationMinutes) {
+    const lastEnd = dayClients.reduce((max, dc) => Math.max(max, dc.startMinutes + dc.durationMinutes), DAY_START);
+    dayClients.push({
+      id: clientInfo.id,
+      name: clientInfo.name,
+      postalCode: clientInfo.postalCode || "",
+      address: clientInfo.address || "",
+      city: clientInfo.city || "",
+      lat: clientInfo.lat ?? null,
+      lng: clientInfo.lng ?? null,
+      startMinutes: Math.min(lastEnd + 15, DAY_END - Math.max(15, durationMinutes)),
+      durationMinutes: Math.max(15, durationMinutes || 60),
+    });
+  }
+
+  function openReplaceSlotPanel() {
+    const editor = container.querySelector("#block-editor");
+    editor.innerHTML = `
+      <div class="card" style="background:var(--teal-light)">
+        <strong>Créneau libre — que voulez-vous faire ?</strong>
+        <button type="button" class="btn secondary block" style="margin-top:10px" id="opt-home">🏠 Rentrer chez moi</button>
+        <button type="button" class="btn secondary block" style="margin-top:8px" id="opt-advance">⏩ Avancer un client déjà planifié plus tard</button>
+        <button type="button" class="btn secondary block" style="margin-top:8px" id="opt-waitlist">📋 Proposer ce créneau à un client en attente</button>
+        <button type="button" class="btn block" style="margin-top:8px" id="opt-close">Fermer</button>
+      </div>
+    `;
+    editor.querySelector("#opt-home").addEventListener("click", () => {
+      editor.innerHTML = "";
+      showToast("Bonne route ! 🚐");
+    });
+    editor.querySelector("#opt-close").addEventListener("click", () => {
+      editor.innerHTML = "";
+    });
+    editor.querySelector("#opt-advance").addEventListener("click", () => showAdvanceCandidate());
+    editor.querySelector("#opt-waitlist").addEventListener("click", () => showWaitlistCandidate(0));
+  }
+
+  async function showAdvanceCandidate() {
+    const editor = container.querySelector("#block-editor");
+    const allTimes = await Store.getAll("visitTimes");
+    const future = allTimes
+      .filter((v) => v.date > dateStr)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes);
+
+    if (future.length === 0) {
+      editor.innerHTML = `
+        <div class="card">
+          <p class="muted" style="margin:0">Aucun rendez-vous planifié à l'avenir pour l'instant.</p>
+          <button type="button" class="btn secondary block" style="margin-top:10px" id="back-btn-advance">‹ Retour</button>
+        </div>
+      `;
+      editor.querySelector("#back-btn-advance").addEventListener("click", openReplaceSlotPanel);
+      return;
+    }
+
+    const candidate = future[0];
+    const candidateDate = new Date(candidate.date + "T12:00:00");
+    editor.innerHTML = `
+      <div class="card" style="background:var(--teal-light)">
+        <strong>${escapeHtml(candidate.clientName)}</strong>
+        <p class="muted" style="margin:4px 0 0">Prévu le ${candidateDate.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })} à ${fmtHM(candidate.startMinutes)}</p>
+        <button type="button" class="btn block" style="margin-top:10px" id="confirm-advance-btn">Avancer à aujourd'hui</button>
+        <button type="button" class="btn secondary block" style="margin-top:8px" id="back-btn-advance2">‹ Retour</button>
+      </div>
+    `;
+    editor.querySelector("#confirm-advance-btn").addEventListener("click", async () => {
+      await Store.delete("visitTimes", candidate.id);
+      const origEntries = await Store.getAll("planningEntries");
+      const origEntry = origEntries.find((p) => p.date === candidate.date);
+      if (origEntry?.tourneeId) {
+        const t = await Store.get("tournees", origEntry.tourneeId);
+        if (t) {
+          const idx2 = t.clientIds.indexOf(candidate.clientId);
+          if (idx2 >= 0) {
+            t.clientIds.splice(idx2, 1);
+            t.clientNames.splice(idx2, 1);
+            if (t.clientIds.length > 0) {
+              await Store.put("tournees", t);
+            } else {
+              await Store.delete("planningEntries", origEntry.id);
+            }
+          }
+        }
+      }
+      const c = allClients.find((x) => x.id === candidate.clientId);
+      addToTodayFromCandidate(
+        { id: candidate.clientId, name: candidate.clientName, postalCode: c?.postalCode, address: c?.address, city: c?.city, lat: c?.lat, lng: c?.lng },
+        candidate.durationMinutes
+      );
+      await persistDay();
+      renderBlocks();
+      refreshAddSelect();
+      editor.innerHTML = "";
+      showToast(`${candidate.clientName} avancé à aujourd'hui`);
+    });
+    editor.querySelector("#back-btn-advance2").addEventListener("click", openReplaceSlotPanel);
+  }
+
+  async function showWaitlistCandidate(skipIndex) {
+    const editor = container.querySelector("#block-editor");
+    const waitlist = await Store.getAll("waitlist");
+    waitlist.sort((a, b) => a.targetMonth.localeCompare(b.targetMonth) || (a.createdAt || "").localeCompare(b.createdAt || ""));
+
+    if (waitlist.length === 0) {
+      editor.innerHTML = `
+        <div class="card">
+          <p class="muted" style="margin:0">Aucun client en liste d'attente pour l'instant.</p>
+          <button type="button" class="btn secondary block" style="margin-top:10px" id="back-btn-wl">‹ Retour</button>
+        </div>
+      `;
+      editor.querySelector("#back-btn-wl").addEventListener("click", openReplaceSlotPanel);
+      return;
+    }
+
+    const index = skipIndex % waitlist.length;
+    const candidate = waitlist[index];
+    editor.innerHTML = `
+      <div class="card" style="background:var(--teal-light)">
+        <strong>${escapeHtml(candidate.name)}</strong>
+        <p class="muted" style="margin:4px 0 0">${escapeHtml(candidate.postalCode)} ${escapeHtml(candidate.city || "")} — en attente pour ${monthLabel(candidate.targetMonth)}</p>
+        <p class="muted">Proposez-lui ce créneau aujourd'hui, s'il vous confirme être disponible.</p>
+        <button type="button" class="btn block" style="margin-top:6px" id="confirm-wl-btn">Programmer aujourd'hui</button>
+        ${waitlist.length > 1 ? `<button type="button" class="btn secondary block" style="margin-top:8px" id="skip-wl-btn">Voir un autre client</button>` : ""}
+        <button type="button" class="btn secondary block" style="margin-top:8px" id="back-btn-wl2">‹ Retour</button>
+      </div>
+    `;
+    editor.querySelector("#confirm-wl-btn").addEventListener("click", async () => {
+      let clientId = candidate.clientId;
+      let clientRecord = clientId ? allClients.find((c) => c.id === clientId) : null;
+      if (!clientId) {
+        const newClient = await Store.put("clients", {
+          name: candidate.name,
+          address: candidate.address || "",
+          postalCode: candidate.postalCode,
+          city: candidate.city || "",
+          phone: candidate.phone || "",
+          email: candidate.email || "",
+          serviceTypes: candidate.serviceType ? [candidate.serviceType] : [],
+          frequency: "ponctuel",
+          notes: candidate.notes || "",
+          lat: candidate.lat ?? null,
+          lng: candidate.lng ?? null,
+        });
+        clientId = newClient.id;
+        clientRecord = newClient;
+        allClients.push(newClient);
+      }
+      addToTodayFromCandidate(
+        { id: clientId, name: candidate.name, postalCode: candidate.postalCode, address: candidate.address, city: candidate.city, lat: clientRecord?.lat ?? candidate.lat, lng: clientRecord?.lng ?? candidate.lng },
+        60
+      );
+      await Store.delete("waitlist", candidate.id);
+      await persistDay();
+      renderBlocks();
+      refreshAddSelect();
+      editor.innerHTML = "";
+      showToast(`${candidate.name} programmé aujourd'hui`);
+    });
+    const skipBtn = editor.querySelector("#skip-wl-btn");
+    if (skipBtn) skipBtn.addEventListener("click", () => showWaitlistCandidate(index + 1));
+    editor.querySelector("#back-btn-wl2").addEventListener("click", openReplaceSlotPanel);
+  }
+
+  container.querySelector("#replace-slot-btn").addEventListener("click", openReplaceSlotPanel);
 
   container.querySelector("#add-client-select").addEventListener("change", async (e) => {
     const id = e.target.value;

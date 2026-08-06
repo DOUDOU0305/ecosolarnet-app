@@ -167,6 +167,15 @@ export async function render(container) {
         </div>
       </div>
 
+      <div class="card">
+        <h3 style="margin-top:0">Jours de Défense</h3>
+        <p class="muted">Ces codes seront proposés dans le calendrier pour marquer un jour comme indisponible (préparation, exercice, tir…).</p>
+        <div class="field">
+          <label>Codes (séparés par des virgules)</label>
+          <input name="defenseDayCodes" value="${s.defenseDayCodes.join(", ")}" placeholder="PE, PR, PL, P, E, GWB, Tirs">
+        </div>
+      </div>
+
       <button type="submit" class="btn block">Enregistrer les réglages</button>
     </form>
 
@@ -207,10 +216,11 @@ export async function render(container) {
     const fd = new FormData(e.target);
     const patch = {};
     for (const [key, value] of fd.entries()) {
-      if (key.startsWith("tier_") || key.startsWith("surcharge_")) continue;
+      if (key.startsWith("tier_") || key.startsWith("surcharge_") || key === "defenseDayCodes") continue;
       const numericKeys = ["rateHainautMin", "rateHainautMax", "rateBruxellesMin", "rateBruxellesMax", "travelFeePerKm", "solarPanelPrice", "osmosisWaterFee", "maxClientsPerDay"];
       patch[key] = numericKeys.includes(key) ? parseFloat(value) : value;
     }
+    patch.defenseDayCodes = fd.get("defenseDayCodes").split(",").map((s) => s.trim()).filter(Boolean);
 
     const windowTiers = {};
     for (const [key, t] of Object.entries(s.windowTiers)) {

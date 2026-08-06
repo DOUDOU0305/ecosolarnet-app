@@ -1,6 +1,6 @@
 const DB_NAME = "ecosolarnet-db";
-const DB_VERSION = 4;
-const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences", "visits", "activeTimer", "visitTimes"];
+const DB_VERSION = 5;
+const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences", "visits", "activeTimer", "visitTimes", "huggyNotified"];
 
 let dbPromise = null;
 
@@ -93,6 +93,7 @@ export const DEFAULT_SETTINGS = {
   autoTimerEnabled: false,
   departureRemindersEnabled: false,
   googleReviewUrl: "https://g.page/r/CQjUFRrPW98OEAE/review",
+  defenseDayCodes: ["PE", "PR", "PL", "P", "E", "GWB", "Tirs"],
   windowTiers: {
     petite: {
       label: "Petite maison / Appartement",

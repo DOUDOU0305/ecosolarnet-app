@@ -11,6 +11,7 @@ import {
 } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
+import { speak } from "../huggyVoice.js";
 
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
@@ -122,22 +123,11 @@ export async function render(container) {
       `).join("")}
     </div>
 
-    <div class="card">
-      <h3 style="margin-top:0">🕵️ Les bons tuyaux de Huggy</h3>
-      <div id="huggy-tips-zone"><p class="muted">Analyse en cours…</p></div>
-    </div>
-
-    <div class="card">
-      <h3 style="margin-top:0">Actions rapides</h3>
-      <button class="btn block" id="qa-client" style="margin-bottom:8px">+ Nouveau client</button>
-      <button class="btn secondary block" id="qa-devis" style="margin-bottom:8px">+ Nouveau devis</button>
-      <button class="btn secondary block" id="qa-planning">🗺️ Voir les tournées</button>
+    <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:6px 2px 18px">
+      <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
+      <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
   `;
-
-  container.querySelector("#qa-client").addEventListener("click", () => (location.hash = "#/clients/new"));
-  container.querySelector("#qa-devis").addEventListener("click", () => (location.hash = "#/devis/new"));
-  container.querySelector("#qa-planning").addEventListener("click", () => (location.hash = "#/planning"));
 
   await renderTimerZone(container);
 
@@ -228,22 +218,44 @@ export async function render(container) {
   }
 
   computeTips()
-    .then((tips) => {
-      const zone = container.querySelector("#huggy-tips-zone");
-      if (!zone) return;
-      zone.innerHTML = tips.map((t) => `
-        <div class="list-item" style="align-items:flex-start">
-          <div>
-            <strong>${t.icon} ${escapeHtml(t.title)}</strong>
-            <p class="muted" style="margin:4px 0 0">${escapeHtml(t.text)}</p>
-          </div>
-        </div>
-      `).join("");
+    .then(async (tips) => {
+      const mini = container.querySelector("#huggy-mini");
+      if (!mini) return;
+      const notifiable = tips.filter((t) => t.notifiable !== false);
+      if (notifiable.length === 0) {
+        mini.style.display = "none";
+        return;
+      }
+      mini.style.display = "flex";
+      const speech = notifiable.map((t) => `${t.title}. ${t.text}`).join(" ... ");
+
+      const notifiedList = await Store.getAll("huggyNotified");
+      const notifiedMap = new Map(notifiedList.map((n) => [n.id, n.text]));
+      const freshTips = notifiable.filter((t) => notifiedMap.get(t.title) !== t.text);
+
+      if (freshTips.length > 0) {
+        for (const t of freshTips) {
+          await Store.put("huggyNotified", { id: t.title, text: t.text });
+        }
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            const notif = new Notification("🕵️ Huggy a un tuyau pour vous", {
+              body: freshTips[0].title,
+              tag: "huggy-tip",
+            });
+            notif.onclick = () => {
+              window.focus();
+              speak(speech);
+            };
+          } catch {
+            // notification indisponible, le bouton "Écouter" reste disponible
+          }
+        }
+      }
+
+      mini.querySelector("#huggy-play-btn").addEventListener("click", () => speak(speech));
     })
-    .catch(() => {
-      const zone = container.querySelector("#huggy-tips-zone");
-      if (zone) zone.innerHTML = `<p class="muted">Impossible d'analyser vos données pour le moment.</p>`;
-    });
+    .catch(() => {});
 }
 
 async function renderTimerZone(container) {

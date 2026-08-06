@@ -107,6 +107,7 @@ export async function computeTips() {
       icon: "🕵️",
       title: "Pas encore assez de données",
       text: "Continuez à utiliser le chrono, les devis et les tournées — Huggy aura bientôt de bons tuyaux pour vous.",
+      notifiable: false,
     });
   }
 
