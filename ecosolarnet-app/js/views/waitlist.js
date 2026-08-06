@@ -1,6 +1,7 @@
 import { Store, getSettings } from "../db.js";
 import { geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
+import { wireAddressAutocomplete, wirePostalCityCross } from "../addressAutocomplete.js";
 import {
   clusterByProximity,
   clusterKm,
@@ -275,16 +276,16 @@ async function renderForm(container) {
         </div>
         <div class="field">
           <label>Adresse</label>
-          <input name="address">
+          <input name="address" id="wl-address-input" placeholder="Commencez à taper l'adresse…" autocomplete="off">
         </div>
         <div class="grid-2">
           <div class="field">
             <label>Code postal *</label>
-            <input name="postalCode" inputmode="numeric" placeholder="6280">
+            <input name="postalCode" id="wl-postal-input" inputmode="numeric" placeholder="6280">
           </div>
           <div class="field">
             <label>Ville</label>
-            <input name="city">
+            <input name="city" id="wl-city-input">
           </div>
         </div>
       </div>
@@ -316,6 +317,20 @@ async function renderForm(container) {
     location.hash = "#/waitlist";
   });
 
+  let pickedCoords = null;
+  wireAddressAutocomplete({
+    addressInput: container.querySelector("#wl-address-input"),
+    postalInput: container.querySelector("#wl-postal-input"),
+    cityInput: container.querySelector("#wl-city-input"),
+    onPick: (coords) => {
+      pickedCoords = coords;
+    },
+  });
+  wirePostalCityCross({
+    postalInput: container.querySelector("#wl-postal-input"),
+    cityInput: container.querySelector("#wl-city-input"),
+  });
+
   container.querySelector("#waitlist-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -340,14 +355,14 @@ async function renderForm(container) {
       serviceType: fd.get("serviceType"),
       targetMonth: fd.get("targetMonth"),
       notes: fd.get("notes").trim(),
-      lat: client?.lat ?? null,
-      lng: client?.lng ?? null,
+      lat: client?.lat ?? pickedCoords?.lat ?? null,
+      lng: client?.lng ?? pickedCoords?.lng ?? null,
       createdAt: new Date().toISOString(),
     };
     const saved = await Store.put("waitlist", record);
     showToast("Ajouté à la liste d'attente");
 
-    if (!client) {
+    if (!client && !pickedCoords) {
       geocodeAddress(fullAddress(saved))
         .then((coords) => {
           if (coords) Store.put("waitlist", { ...saved, lat: coords.lat, lng: coords.lng });

@@ -129,6 +129,22 @@ export async function render(container) {
       </div>
 
       <div class="card">
+        <h3 style="margin-top:0">Ajuster rapidement les prix vitres</h3>
+        <p class="muted">Augmente ou diminue tous les prix de la grille vitres et les suppléments, en une fois.</p>
+        <input type="range" id="vitres-slider" min="-30" max="30" value="0" step="1" style="width:100%">
+        <p class="muted" id="vitres-slider-label" style="text-align:center;font-size:16px;font-weight:600;color:var(--text);margin:6px 0">0 %</p>
+        <button type="button" class="btn secondary block" id="vitres-apply-btn">Appliquer aux prix vitres</button>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Ajuster rapidement le prix panneaux solaires</h3>
+        <p class="muted">Augmente ou diminue le prix par panneau.</p>
+        <input type="range" id="panneaux-slider" min="-30" max="30" value="0" step="1" style="width:100%">
+        <p class="muted" id="panneaux-slider-label" style="text-align:center;font-size:16px;font-weight:600;color:var(--text);margin:6px 0">0 %</p>
+        <button type="button" class="btn secondary block" id="panneaux-apply-btn">Appliquer au prix panneaux</button>
+      </div>
+
+      <div class="card">
         <h3 style="margin-top:0">Tournées</h3>
         <div class="field">
           <label>Nombre maximum de clients par tournée</label>
@@ -197,5 +213,60 @@ export async function render(container) {
     } catch {
       status.textContent = "⚠️ Impossible de localiser l'adresse (pas de connexion internet ?).";
     }
+  });
+
+  function wireSliderLabel(sliderId, labelId) {
+    const slider = container.querySelector(`#${sliderId}`);
+    const label = container.querySelector(`#${labelId}`);
+    slider.addEventListener("input", () => {
+      const v = parseInt(slider.value, 10);
+      label.textContent = (v > 0 ? "+" : "") + v + " %";
+    });
+  }
+  wireSliderLabel("vitres-slider", "vitres-slider-label");
+  wireSliderLabel("panneaux-slider", "panneaux-slider-label");
+
+  container.querySelector("#vitres-apply-btn").addEventListener("click", async () => {
+    const pct = parseInt(container.querySelector("#vitres-slider").value, 10);
+    if (!pct) {
+      showToast("Déplacez le curseur pour choisir un ajustement");
+      return;
+    }
+    const mult = 1 + pct / 100;
+    const current = await getSettings();
+    const newTiers = {};
+    for (const [key, t] of Object.entries(current.windowTiers)) {
+      if (key === "tresGrande") {
+        newTiers[key] = { ...t, startingAt: Math.round(t.startingAt * mult) };
+      } else {
+        newTiers[key] = {
+          ...t,
+          ext: { min: Math.round(t.ext.min * mult), max: Math.round(t.ext.max * mult) },
+          full: { min: Math.round(t.full.min * mult), max: Math.round(t.full.max * mult) },
+          subExt: { min: Math.round(t.subExt.min * mult), max: Math.round(t.subExt.max * mult) },
+          subFull: { min: Math.round(t.subFull.min * mult), max: Math.round(t.subFull.max * mult) },
+        };
+      }
+    }
+    const newSurcharges = {};
+    for (const [key, sc] of Object.entries(current.windowSurcharges)) {
+      newSurcharges[key] = { ...sc, min: Math.round(sc.min * mult), max: Math.round(sc.max * mult) };
+    }
+    await saveSettings({ windowTiers: newTiers, windowSurcharges: newSurcharges });
+    showToast(`Prix vitres ajustés de ${pct > 0 ? "+" : ""}${pct}%`);
+    await render(container);
+  });
+
+  container.querySelector("#panneaux-apply-btn").addEventListener("click", async () => {
+    const pct = parseInt(container.querySelector("#panneaux-slider").value, 10);
+    if (!pct) {
+      showToast("Déplacez le curseur pour choisir un ajustement");
+      return;
+    }
+    const mult = 1 + pct / 100;
+    const current = await getSettings();
+    await saveSettings({ solarPanelPrice: Math.round(current.solarPanelPrice * mult * 100) / 100 });
+    showToast(`Prix panneaux ajusté de ${pct > 0 ? "+" : ""}${pct}%`);
+    await render(container);
   });
 }

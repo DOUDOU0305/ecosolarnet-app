@@ -3,8 +3,9 @@ import { showToast, escapeHtml } from "../toast.js";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const DAY_START = 7 * 60; // 7h00 en minutes
-const DAY_END = 20 * 60; // 20h00
+const DAY_START = 0; // minuit
+const DAY_END = 24 * 60; // minuit le lendemain
+const SCROLL_TO_HOUR = 7; // défilement automatique vers cette heure à l'ouverture
 const PX_PER_MIN = 1.2;
 
 function pad2(n) {
@@ -136,6 +137,49 @@ export async function renderMonth(container, monthStr) {
   });
 }
 
+// Calcule une disposition côte à côte pour les rendez-vous qui se chevauchent
+// dans le temps (comme dans Apple Calendar), plutôt que de les superposer.
+function layoutOverlaps(clients) {
+  const items = clients.map((c, i) => ({
+    idx: i,
+    start: c.startMinutes,
+    end: c.startMinutes + c.durationMinutes,
+  }));
+  items.sort((a, b) => a.start - b.start);
+
+  const clusters = [];
+  let currentCluster = [];
+  let clusterEnd = -Infinity;
+  for (const item of items) {
+    if (currentCluster.length > 0 && item.start >= clusterEnd) {
+      clusters.push(currentCluster);
+      currentCluster = [];
+      clusterEnd = -Infinity;
+    }
+    currentCluster.push(item);
+    clusterEnd = Math.max(clusterEnd, item.end);
+  }
+  if (currentCluster.length > 0) clusters.push(currentCluster);
+
+  const layout = {};
+  for (const cluster of clusters) {
+    const columnEnds = [];
+    for (const item of cluster) {
+      let colIndex = columnEnds.findIndex((end) => end <= item.start);
+      if (colIndex === -1) {
+        colIndex = columnEnds.length;
+        columnEnds.push(item.end);
+      } else {
+        columnEnds[colIndex] = item.end;
+      }
+      layout[item.idx] = { col: colIndex };
+    }
+    const numCols = columnEnds.length;
+    for (const item of cluster) layout[item.idx].numCols = numCols;
+  }
+  return layout;
+}
+
 // --- Vue Jour (chronologie horaire, glisser-déposer) ---
 
 export async function renderDay(container, dateStr) {
@@ -214,11 +258,16 @@ export async function renderDay(container, dateStr) {
 
   function renderBlocks() {
     const layer = container.querySelector("#blocks-layer");
+    const layout = layoutOverlaps(dayClients);
     layer.innerHTML = dayClients.map((c, i) => {
       const top = (c.startMinutes - DAY_START) * PX_PER_MIN;
       const height = Math.max(c.durationMinutes * PX_PER_MIN, 26);
+      const { col, numCols } = layout[i];
+      const widthPct = 100 / numCols;
+      const leftPct = col * widthPct;
+      const gap = numCols > 1 ? 3 : 0;
       return `
-        <div class="appt-block" data-idx="${i}" style="position:absolute;top:${top}px;left:0;right:0;height:${height}px;background:var(--teal);color:white;border-radius:8px;padding:4px 8px;font-size:12px;overflow:hidden;touch-action:none;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.15)">
+        <div class="appt-block" data-idx="${i}" style="position:absolute;top:${top}px;left:calc(${leftPct}% + ${col > 0 ? gap : 0}px);width:calc(${widthPct}% - ${gap}px);height:${height}px;background:var(--teal);color:white;border-radius:8px;padding:4px 8px;font-size:12px;overflow:hidden;touch-action:none;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.15)">
           <strong style="display:block;line-height:1.2">${escapeHtml(c.name)}</strong>
           <span style="opacity:0.85">${fmtHM(c.startMinutes)} – ${fmtHM(c.startMinutes + c.durationMinutes)}</span>
         </div>
@@ -275,19 +324,30 @@ export async function renderDay(container, dateStr) {
   function openBlockEditor(idx) {
     const c = dayClients[idx];
     const editor = container.querySelector("#block-editor");
+    const durH = Math.floor(c.durationMinutes / 60);
+    const durM = c.durationMinutes % 60;
+    const minuteOptions = [0, 15, 30, 45];
+    const closestM = minuteOptions.reduce((a, b) => (Math.abs(b - durM) < Math.abs(a - durM) ? b : a));
     editor.innerHTML = `
       <div class="card" style="background:var(--teal-light)">
         <strong>${escapeHtml(c.name)}</strong>
         ${c.address ? `<p class="muted" style="margin:4px 0 0">${escapeHtml(c.address)}, ${escapeHtml(c.postalCode)} ${escapeHtml(c.city || "")}</p>` : ""}
         <a href="${wazeUrl(c)}" id="waze-btn" class="btn secondary block" style="margin-top:10px;text-decoration:none;display:block;text-align:center">🚗 En route vers ce client (Waze)</a>
-        <div class="grid-2" style="margin-top:10px">
+        <div class="field" style="margin-top:10px">
+          <label>Heure de début</label>
+          <input type="time" id="edit-start" value="${fmtHM(c.startMinutes)}">
+        </div>
+        <label>Durée</label>
+        <div class="grid-2">
           <div class="field">
-            <label>Heure de début</label>
-            <input type="time" id="edit-start" value="${fmtHM(c.startMinutes)}">
+            <select id="edit-duration-h">
+              ${Array.from({ length: 9 }, (_, h) => `<option value="${h}" ${h === durH ? "selected" : ""}>${h} h</option>`).join("")}
+            </select>
           </div>
           <div class="field">
-            <label>Durée (minutes)</label>
-            <input type="number" id="edit-duration" min="15" step="15" value="${c.durationMinutes}">
+            <select id="edit-duration-m">
+              ${minuteOptions.map((m) => `<option value="${m}" ${m === closestM ? "selected" : ""}>${m} min</option>`).join("")}
+            </select>
           </div>
         </div>
         <button type="button" class="btn block" id="edit-save-btn">Enregistrer</button>
@@ -297,7 +357,9 @@ export async function renderDay(container, dateStr) {
     `;
     editor.querySelector("#edit-save-btn").addEventListener("click", async () => {
       const newStart = parseHM(editor.querySelector("#edit-start").value);
-      const newDuration = Math.max(15, parseInt(editor.querySelector("#edit-duration").value, 10) || 15);
+      const h = parseInt(editor.querySelector("#edit-duration-h").value, 10) || 0;
+      const m = parseInt(editor.querySelector("#edit-duration-m").value, 10) || 0;
+      const newDuration = Math.max(15, h * 60 + m);
       dayClients[idx].startMinutes = newStart;
       dayClients[idx].durationMinutes = newDuration;
       await persistDay();
@@ -386,6 +448,13 @@ export async function renderDay(container, dateStr) {
   }
 
   renderBlocks();
+
+  const scrollHost = container.closest(".view") || container;
+  const timeline = container.querySelector("#day-timeline");
+  if (scrollHost && timeline) {
+    const timelineTop = timeline.offsetTop;
+    scrollHost.scrollTop = timelineTop + SCROLL_TO_HOUR * 60 * PX_PER_MIN - 40;
+  }
 }
 
 function autoAssignMissingTimes(dayClients, visits) {

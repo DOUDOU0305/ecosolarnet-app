@@ -2,6 +2,7 @@ import { Store } from "../db.js";
 import { classifyRegion, geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { formatDuration } from "../timer.js";
+import { wireAddressAutocomplete, wirePostalCityCross } from "../addressAutocomplete.js";
 
 const SERVICE_LABELS = {
   vitres: "Vitres",
@@ -62,7 +63,7 @@ async function renderList(container) {
               <div><strong>${escapeHtml(c.name)}</strong></div>
               <div class="muted">${escapeHtml(c.postalCode)} ${escapeHtml(c.city)}</div>
               <div style="margin-top:4px">
-                <span class="pill ${regionPillClass(classifyRegion(c.postalCode))}">${classifyRegion(c.postalCode)}</span>
+                <span class="pill ${regionPillClass(classifyRegion(c.postalCode))}">${escapeHtml(c.city)}</span>
                 ${(c.serviceTypes || []).map((s) => `<span class="pill" style="margin-left:4px">${SERVICE_LABELS[s] || s}</span>`).join("")}
               </div>
             </div>
@@ -104,16 +105,16 @@ async function renderForm(container, id) {
       </div>
       <div class="field">
         <label>Adresse *</label>
-        <input name="address" required value="${escapeHtml(client?.address || "")}" placeholder="Rue et numéro">
+        <input name="address" id="address-input" required value="${escapeHtml(client?.address || "")}" placeholder="Commencez à taper l'adresse…" autocomplete="off">
       </div>
       <div class="grid-2">
         <div class="field">
           <label>Code postal *</label>
-          <input name="postalCode" required value="${escapeHtml(client?.postalCode || "")}" placeholder="6280" inputmode="numeric">
+          <input name="postalCode" id="postal-input" required value="${escapeHtml(client?.postalCode || "")}" placeholder="6280" inputmode="numeric">
         </div>
         <div class="field">
           <label>Ville *</label>
-          <input name="city" required value="${escapeHtml(client?.city || "")}" placeholder="Gerpinnes">
+          <input name="city" id="city-input" required value="${escapeHtml(client?.city || "")}" placeholder="Gerpinnes">
         </div>
       </div>
       <div class="grid-2">
@@ -196,6 +197,20 @@ async function renderForm(container, id) {
     location.hash = "#/clients";
   });
 
+  let pickedCoords = null;
+  wireAddressAutocomplete({
+    addressInput: container.querySelector("#address-input"),
+    postalInput: container.querySelector("#postal-input"),
+    cityInput: container.querySelector("#city-input"),
+    onPick: (coords) => {
+      pickedCoords = coords;
+    },
+  });
+  wirePostalCityCross({
+    postalInput: container.querySelector("#postal-input"),
+    cityInput: container.querySelector("#city-input"),
+  });
+
   if (client) {
     container.querySelector("#delete-btn").addEventListener("click", async () => {
       if (confirm(`Supprimer ${client.name} ?`)) {
@@ -246,18 +261,21 @@ async function renderForm(container, id) {
       serviceTypes,
       frequency: fd.get("frequency"),
       notes: fd.get("notes").trim(),
-      lat: client?.lat ?? null,
-      lng: client?.lng ?? null,
+      lat: pickedCoords?.lat ?? client?.lat ?? null,
+      lng: pickedCoords?.lng ?? client?.lng ?? null,
     };
     const saved = await Store.put("clients", record);
     showToast("Client enregistré");
 
-    // Géocodage en arrière-plan (n'empêche pas de continuer à utiliser l'appli)
-    geocodeAddress(fullAddress(saved))
-      .then((coords) => {
-        if (coords) Store.put("clients", { ...saved, lat: coords.lat, lng: coords.lng });
-      })
-      .catch(() => {});
+    // Si l'adresse a été choisie dans les suggestions, on a déjà ses coordonnées.
+    // Sinon, géocodage en arrière-plan (n'empêche pas de continuer à utiliser l'appli).
+    if (!pickedCoords) {
+      geocodeAddress(fullAddress(saved))
+        .then((coords) => {
+          if (coords) Store.put("clients", { ...saved, lat: coords.lat, lng: coords.lng });
+        })
+        .catch(() => {});
+    }
 
     location.hash = "#/clients";
   });
