@@ -93,7 +93,7 @@ export const DEFAULT_SETTINGS = {
   autoTimerEnabled: false,
   departureRemindersEnabled: false,
   googleReviewUrl: "https://g.page/r/CQjUFRrPW98OEAE/review",
-  defenseDayCodes: ["PE", "PR", "PL", "P", "E", "GWB", "Tirs"],
+  defenseDayCodes: ["PE", "PR", "PL", "P", "E", "GWB", "Tirs", "R"],
   windowTiers: {
     petite: {
       label: "Petite maison / Appartement",
