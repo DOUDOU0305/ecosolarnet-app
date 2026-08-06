@@ -38,18 +38,27 @@ export async function render(container) {
   const clients = await Store.getAll("clients");
   const devisList = await Store.getAll("devis");
   const entries = await Store.getAll("planningEntries");
+  const visitTimesAll = await Store.getAll("visitTimes");
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
+  const tomorrowStr = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const monthPrefix = todayStr.slice(0, 7);
 
   const devisCeMois = devisList.filter((d) => (d.date || "").startsWith(monthPrefix));
   const caCeMois = devisCeMois.filter((d) => d.status === "accepte").reduce((s, d) => s + d.total, 0);
 
-  const upcoming = entries
-    .filter((e) => e.date >= todayStr)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
+  function appointmentsForDate(dateStr) {
+    const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
+    if (times.length > 0) {
+      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName }));
+    }
+    const entry = entries.find((e) => e.date === dateStr);
+    return entry ? [{ time: "", name: entry.label }] : [];
+  }
+
+  const todayAppts = appointmentsForDate(todayStr);
+  const tomorrowAppts = appointmentsForDate(tomorrowStr);
 
   container.innerHTML = `
     <h1>Bonjour 👋</h1>
@@ -90,15 +99,25 @@ export async function render(container) {
     </div>
 
     <div class="card">
-      <div class="section-title-row">
-        <h3 style="margin-top:0">Prochains jours planifiés</h3>
-      </div>
-      ${upcoming.length === 0 ? `
-        <p class="muted">Rien de planifié pour l'instant. Allez dans <strong>Tournées</strong> pour organiser votre mois.</p>
-      ` : upcoming.map((e) => `
+      <h3 style="margin-top:0">Aujourd'hui</h3>
+      ${todayAppts.length === 0 ? `
+        <p class="muted">Rien de prévu aujourd'hui.</p>
+      ` : todayAppts.map((a) => `
         <div class="list-item">
-          <span>${new Date(e.date).toLocaleDateString("fr-BE", { weekday: "short", day: "numeric", month: "short" })}</span>
-          <strong>${escapeHtml(e.label)}</strong>
+          <span class="muted" style="min-width:48px">${escapeHtml(a.time)}</span>
+          <strong style="flex:1;margin-left:6px">${escapeHtml(a.name)}</strong>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Demain</h3>
+      ${tomorrowAppts.length === 0 ? `
+        <p class="muted">Rien de prévu demain.</p>
+      ` : tomorrowAppts.map((a) => `
+        <div class="list-item">
+          <span class="muted" style="min-width:48px">${escapeHtml(a.time)}</span>
+          <strong style="flex:1;margin-left:6px">${escapeHtml(a.name)}</strong>
         </div>
       `).join("")}
     </div>
