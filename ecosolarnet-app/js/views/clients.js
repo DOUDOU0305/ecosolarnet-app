@@ -51,7 +51,7 @@ async function renderList(container) {
     ${clients.length === 0 ? `
       <div class="empty-state">
         <div class="big">👤</div>
-        <p>Aucun client pour l'instant.<br>Ajoutez votre premier client avec le bouton +.</p>
+        <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
       </div>
     ` : `
       <div class="card">
@@ -76,16 +76,12 @@ async function renderList(container) {
         }).join("")}
       </div>
     `}
-    <button class="fab" id="add-client-btn">+</button>
   `;
 
   container.querySelectorAll(".list-item").forEach((el) => {
     el.addEventListener("click", () => {
       location.hash = `#/clients/${el.dataset.id}`;
     });
-  });
-  container.querySelector("#add-client-btn").addEventListener("click", () => {
-    location.hash = "#/clients/new";
   });
 }
 

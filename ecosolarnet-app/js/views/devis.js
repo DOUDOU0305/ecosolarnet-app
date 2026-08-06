@@ -76,7 +76,7 @@ async function renderList(container) {
     ${devisList.length === 0 ? `
       <div class="empty-state">
         <div class="big">📄</div>
-        <p>Aucun devis pour l'instant.<br>Créez votre premier devis avec le bouton +.</p>
+        <p>Aucun devis pour l'instant.<br>Maintenez le doigt sur "Devis" en bas de l'écran pour en créer un.</p>
       </div>
     ` : `
       <div class="card">
@@ -94,16 +94,12 @@ async function renderList(container) {
         `).join("")}
       </div>
     `}
-    <button class="fab" id="add-devis-btn">+</button>
   `;
 
   container.querySelectorAll(".list-item").forEach((el) => {
     el.addEventListener("click", () => {
       location.hash = `#/devis/${el.dataset.id}`;
     });
-  });
-  container.querySelector("#add-devis-btn").addEventListener("click", () => {
-    location.hash = "#/devis/new";
   });
 }
 
