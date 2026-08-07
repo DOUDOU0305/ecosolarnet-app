@@ -3,6 +3,7 @@ import { geocodeAddress, fullAddress } from "../geo.js";
 import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
+import { exportBackup, importBackupFromFile } from "../backup.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -191,8 +192,17 @@ export async function render(container) {
     </form>
 
     <div class="card" style="margin-top:20px">
+      <h3 style="margin-top:0">Sauvegarde</h3>
+      <p class="muted">Vos données (clients, devis, planning...) sont stockées uniquement sur cet appareil. Faites une sauvegarde régulièrement — surtout avant toute mise à jour importante — pour ne jamais rien perdre.</p>
+      <button type="button" class="btn block" id="export-backup-btn">📤 Exporter mes données</button>
+      <button type="button" class="btn secondary block" id="import-backup-btn" style="margin-top:8px">📥 Importer une sauvegarde</button>
+      <input type="file" id="import-backup-input" accept="application/json,.json" style="display:none">
+      <p class="muted" id="backup-status" style="margin:8px 0 0"></p>
+    </div>
+
+    <div class="card" style="margin-top:12px">
       <h3 style="margin-top:0">À propos</h3>
-      <p class="muted">Application ECOSOLARNET — vos données (clients, devis, planning) sont stockées uniquement sur cet appareil, dans ce navigateur. Pensez à ne pas effacer les données de navigation de Safari pour cette appli.</p>
+      <p class="muted">Application ECOSOLARNET — vos données (clients, devis, planning) sont stockées uniquement sur cet appareil, dans ce navigateur. Pensez à ne pas effacer les données de navigation de Safari pour cette appli, et à ne jamais supprimer puis réinstaller l'icône sur l'écran d'accueil (cela efface tout).</p>
     </div>
   `;
 
@@ -220,6 +230,46 @@ export async function render(container) {
   container.querySelector("#google-review-url").addEventListener("input", (e) => {
     clearTimeout(qrDebounce);
     qrDebounce = setTimeout(() => refreshQrPreview(e.target.value.trim()), 500);
+  });
+
+  const backupStatus = container.querySelector("#backup-status");
+  container.querySelector("#export-backup-btn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    backupStatus.textContent = "Préparation de la sauvegarde…";
+    try {
+      const result = await exportBackup();
+      if (result === "shared") {
+        backupStatus.textContent = "✅ Sauvegarde partagée. Enregistrez-la dans Fichiers ou envoyez-la-vous par email.";
+      } else if (result === "downloaded") {
+        backupStatus.textContent = "✅ Sauvegarde téléchargée.";
+      } else {
+        backupStatus.textContent = "";
+      }
+    } catch (err) {
+      backupStatus.textContent = "⚠️ Échec de la sauvegarde : " + (err.message || err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  container.querySelector("#import-backup-btn").addEventListener("click", () => {
+    container.querySelector("#import-backup-input").click();
+  });
+
+  container.querySelector("#import-backup-input").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    backupStatus.textContent = "Restauration en cours…";
+    try {
+      const count = await importBackupFromFile(file);
+      backupStatus.textContent = `✅ ${count} élément(s) restauré(s). Retournez dans les autres onglets pour vérifier.`;
+      showToast("Sauvegarde restaurée");
+    } catch (err) {
+      backupStatus.textContent = "⚠️ " + (err.message || "Impossible de restaurer ce fichier.");
+    } finally {
+      e.target.value = "";
+    }
   });
 
   const departureStatus = container.querySelector("#departure-status");

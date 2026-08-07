@@ -31,6 +31,8 @@ async function tx(storeName, mode) {
   return db.transaction(storeName, mode).objectStore(storeName);
 }
 
+export { STORES };
+
 export const Store = {
   async getAll(storeName) {
     const store = await tx(storeName, "readonly");
