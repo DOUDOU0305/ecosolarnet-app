@@ -12,6 +12,81 @@ const SERVICE_LABELS = {
   panneaux: "Panneaux solaires",
 };
 
+const SWIPE_OPEN_X = -84;
+let openSwipeRow = null;
+
+function closeSwipeRow(row) {
+  if (!row) return;
+  const content = row.querySelector(".swipe-content");
+  if (content) content.style.transform = "translateX(0)";
+  row.classList.remove("swipe-open");
+  if (openSwipeRow === row) openSwipeRow = null;
+}
+
+function wireSwipeRows(container, onDelete) {
+  container.querySelectorAll(".swipe-row").forEach((row) => {
+    const content = row.querySelector(".swipe-content");
+    const deleteBtn = row.querySelector(".swipe-delete-btn");
+    let startX = 0;
+    let startY = 0;
+    let baseX = 0;
+    let dragging = false;
+    let axis = null;
+
+    content.addEventListener("pointerdown", (e) => {
+      if (openSwipeRow && openSwipeRow !== row) closeSwipeRow(openSwipeRow);
+      startX = e.clientX;
+      startY = e.clientY;
+      baseX = row.classList.contains("swipe-open") ? SWIPE_OPEN_X : 0;
+      dragging = true;
+      axis = null;
+      content.style.transition = "none";
+      content.setPointerCapture(e.pointerId);
+    });
+
+    content.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (axis === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (axis !== "x") return;
+      const x = Math.min(0, Math.max(SWIPE_OPEN_X, baseX + dx));
+      content.style.transform = `translateX(${x}px)`;
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      content.style.transition = "";
+      if (axis !== "x") return;
+      const dx = e.clientX - startX;
+      const finalX = baseX + dx;
+      if (finalX < SWIPE_OPEN_X / 2) {
+        content.style.transform = `translateX(${SWIPE_OPEN_X}px)`;
+        row.classList.add("swipe-open");
+        openSwipeRow = row;
+      } else {
+        closeSwipeRow(row);
+      }
+    }
+
+    content.addEventListener("pointerup", endDrag);
+    content.addEventListener("pointercancel", endDrag);
+
+    content.addEventListener("click", (e) => {
+      if (row.classList.contains("swipe-open")) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSwipeRow(row);
+      }
+    });
+
+    deleteBtn.addEventListener("click", () => onDelete(row.dataset.visitId));
+  });
+}
+
 const FREQ_LABELS = {
   mensuel: "Chaque mois",
   bimestriel: "Tous les 2 mois",
@@ -164,12 +239,18 @@ async function renderForm(container, id) {
         <h3 style="margin-top:0">Temps passé chez ce client</h3>
         ${visits.length > 0 ? `
           <p class="muted">Moyenne : ${formatDuration(avgSeconds)} sur ${visits.length} passage${visits.length > 1 ? "s" : ""}</p>
-          ${visits.slice(0, 8).map((v) => `
-            <div class="list-item">
-              <span>${new Date(v.startTime).toLocaleDateString("fr-BE", { day: "numeric", month: "short", year: "numeric" })}${v.manual ? " (ajouté à la main)" : ""}</span>
-              <strong>${formatDuration(v.durationSeconds)}</strong>
-            </div>
-          `).join("")}
+          <p class="muted" style="font-size:12px">Glissez une ligne vers la gauche pour la supprimer.</p>
+          <div id="visits-list">
+            ${visits.slice(0, 8).map((v) => `
+              <div class="swipe-row" data-visit-id="${v.id}">
+                <button type="button" class="swipe-delete-btn">Supprimer</button>
+                <div class="swipe-content list-item">
+                  <span>${new Date(v.startTime).toLocaleDateString("fr-BE", { day: "numeric", month: "short", year: "numeric" })}${v.manual ? " (ajouté à la main)" : ""}</span>
+                  <strong>${formatDuration(v.durationSeconds)}</strong>
+                </div>
+              </div>
+            `).join("")}
+          </div>
         ` : `<p class="muted">Aucun temps enregistré pour l'instant.</p>`}
 
         <h3 style="margin:16px 0 0">Ajouter un temps manuellement</h3>
@@ -214,6 +295,13 @@ async function renderForm(container, id) {
   });
 
   if (client) {
+    openSwipeRow = null;
+    wireSwipeRows(container, async (visitId) => {
+      await Store.delete("visits", visitId);
+      showToast("Temps supprimé");
+      await renderForm(container, client.id);
+    });
+
     container.querySelector("#delete-btn").addEventListener("click", async () => {
       if (confirm(`Supprimer ${client.name} ?`)) {
         await Store.delete("clients", client.id);
