@@ -9,6 +9,8 @@ const DAY_START = 0; // minuit
 const DAY_END = 24 * 60; // minuit le lendemain
 const SCROLL_TO_HOUR = 7; // défilement automatique vers cette heure à l'ouverture
 const PX_PER_MIN = 1.2;
+const LONG_PRESS_COPY_MS = 480;
+const CLIPBOARD_KEY = "ecosolarnet-clipboard-appt";
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -248,6 +250,8 @@ export async function renderDay(container, dateStr) {
       <button type="button" class="btn secondary block" id="replace-slot-btn" style="margin-top:8px">🔄 Remplacer un créneau libre</button>
     </div>
 
+    <div id="paste-field" style="max-width:260px;margin-top:8px"></div>
+
     <div class="card" style="padding:0;overflow:visible">
       <div id="day-timeline" style="position:relative;height:${timelineHeight}px;margin:10px 0">
         ${hours.map((h) => {
@@ -261,7 +265,7 @@ export async function renderDay(container, dateStr) {
       </div>
     </div>
 
-    <p class="muted">Maintenez un rendez-vous et faites-le glisser pour changer l'heure. Touchez-le pour modifier la durée ou le supprimer.</p>
+    <p class="muted">Maintenez un rendez-vous et faites-le glisser pour changer l'heure. Touchez-le pour modifier la durée ou le supprimer. Maintenez-le sans bouger pour le copier vers un autre jour.</p>
     <div id="block-editor"></div>
   `;
 
@@ -272,6 +276,7 @@ export async function renderDay(container, dateStr) {
   function renderDefenseNotice() {
     const notice = container.querySelector("#defense-notice");
     const addClientField = container.querySelector("#add-client-field");
+    const pasteField = container.querySelector("#paste-field");
     if (currentDefenseCode) {
       notice.innerHTML = `
         <div class="card" style="background:rgba(201,151,79,0.14);border:none">
@@ -280,9 +285,11 @@ export async function renderDay(container, dateStr) {
         </div>
       `;
       if (addClientField) addClientField.style.display = "none";
+      if (pasteField) pasteField.style.display = "none";
     } else {
       notice.innerHTML = "";
       if (addClientField) addClientField.style.display = "";
+      if (pasteField) pasteField.style.display = "";
     }
   }
   renderDefenseNotice();
@@ -342,19 +349,32 @@ export async function renderDay(container, dateStr) {
     let originalStart = 0;
     let dragging = false;
     let pendingStart = null;
+    let longPressTimer = null;
+    let longPressFired = false;
 
     block.addEventListener("pointerdown", (e) => {
       startY = e.clientY;
       originalStart = dayClients[idx].startMinutes;
       dragging = false;
       pendingStart = null;
+      longPressFired = false;
       block.setPointerCapture(e.pointerId);
+      clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(() => {
+        if (dragging) return;
+        longPressFired = true;
+        if (navigator.vibrate) navigator.vibrate(10);
+        copyAppointment(idx);
+      }, LONG_PRESS_COPY_MS);
     });
 
     block.addEventListener("pointermove", (e) => {
       if (!block.hasPointerCapture(e.pointerId)) return;
       const deltaY = e.clientY - startY;
-      if (Math.abs(deltaY) > 4) dragging = true;
+      if (Math.abs(deltaY) > 4) {
+        dragging = true;
+        clearTimeout(longPressTimer);
+      }
       if (!dragging) return;
       const deltaMin = Math.round(deltaY / PX_PER_MIN / 15) * 15;
       let newStart = originalStart + deltaMin;
@@ -367,7 +387,13 @@ export async function renderDay(container, dateStr) {
     });
 
     block.addEventListener("pointerup", async (e) => {
+      clearTimeout(longPressTimer);
       block.releasePointerCapture(e.pointerId);
+      if (longPressFired) {
+        longPressFired = false;
+        dragging = false;
+        return;
+      }
       if (dragging && pendingStart != null) {
         dayClients[idx].startMinutes = pendingStart;
         await persistDay();
@@ -376,6 +402,67 @@ export async function renderDay(container, dateStr) {
         openBlockEditor(idx);
       }
       dragging = false;
+    });
+
+    block.addEventListener("pointercancel", () => clearTimeout(longPressTimer));
+  }
+
+  function readClipboard() {
+    try {
+      const raw = sessionStorage.getItem(CLIPBOARD_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function copyAppointment(idx) {
+    const c = dayClients[idx];
+    const clip = {
+      clientId: c.id,
+      name: c.name,
+      postalCode: c.postalCode || "",
+      address: c.address || "",
+      city: c.city || "",
+      lat: c.lat ?? null,
+      lng: c.lng ?? null,
+      durationMinutes: c.durationMinutes,
+    };
+    sessionStorage.setItem(CLIPBOARD_KEY, JSON.stringify(clip));
+    showToast(`📋 ${c.name} copié — ouvrez un autre jour et touchez "Coller"`);
+    refreshPasteButton();
+  }
+
+  function refreshPasteButton() {
+    const field = container.querySelector("#paste-field");
+    if (!field) return;
+    const clip = readClipboard();
+    if (!clip) {
+      field.innerHTML = "";
+      return;
+    }
+    const alreadyHere = dayClients.some((dc) => dc.id === clip.clientId);
+    field.innerHTML = `
+      <button type="button" class="btn secondary block" id="paste-btn" ${alreadyHere ? "disabled" : ""}>📋 Coller ${escapeHtml(clip.name)}${alreadyHere ? " (déjà ce jour)" : ""}</button>
+      <button type="button" class="back-btn" id="clear-clipboard-btn" style="padding:6px 0 0;font-size:13px">Vider le presse-papier</button>
+    `;
+    const pasteBtn = field.querySelector("#paste-btn");
+    if (pasteBtn && !alreadyHere) {
+      pasteBtn.addEventListener("click", async () => {
+        addToTodayFromCandidate(
+          { id: clip.clientId, name: clip.name, postalCode: clip.postalCode, address: clip.address, city: clip.city, lat: clip.lat, lng: clip.lng },
+          clip.durationMinutes
+        );
+        await persistDay();
+        renderBlocks();
+        refreshAddSelect();
+        refreshPasteButton();
+        showToast(`${clip.name} collé sur ce jour`);
+      });
+    }
+    field.querySelector("#clear-clipboard-btn").addEventListener("click", () => {
+      sessionStorage.removeItem(CLIPBOARD_KEY);
+      refreshPasteButton();
     });
   }
 
@@ -674,6 +761,7 @@ export async function renderDay(container, dateStr) {
   }
 
   renderBlocks();
+  refreshPasteButton();
 
   const scrollHost = container.closest(".view") || container;
   const timeline = container.querySelector("#day-timeline");
