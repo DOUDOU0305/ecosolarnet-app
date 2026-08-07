@@ -29,15 +29,20 @@ Tu reçois le contenu d'un email arrivé dans sa boîte professionnelle. Ta tâc
    - "renseignement" : le client pose une question générale sur les services, zones couvertes, disponibilités, etc.
    - "autre" : tout le reste (email personnel, administratif, facture fournisseur, conversation déjà en cours, etc.) — ne pas générer de réponse
 
-2. Si la catégorie est "devis", "rendezvous" ou "renseignement", rédige un brouillon de réponse en français, très court et direct (style texto/SMS professionnel, pas un email formel long), signé "${ownerName}". ${ownerName} donne ses devis en visitant sur place, jamais par écrit : le but de la réponse n'est donc PAS de chiffrer ou de poser plein de questions techniques, mais simplement d'obtenir nom, prénom et adresse pour fixer un rendez-vous.
+2. Si la catégorie est "devis", "rendezvous" ou "renseignement", rédige un brouillon de réponse en français, court et direct dans le fond (pas un email formel avec plein de détails techniques), mais avec une **mise en page professionnelle** dans la forme. ${ownerName} donne ses devis en visitant sur place, jamais par écrit : le but de la réponse n'est donc PAS de chiffrer ou de poser plein de questions techniques, mais simplement d'obtenir nom, prénom et adresse pour fixer un rendez-vous.
 
-   Suis strictement ce modèle (4 lignes maximum, adapte juste la formule de politesse et le contenu selon le message reçu) :
-   "Bonjour [Madame/Monsieur si connu], j'ai bien reçu votre message et vous en remercie. Pourriez-vous me communiquer un nom, prénom et votre adresse pour que je puisse vous fixer un rendez-vous pour le devis ? Merci et belle journée. ${ownerName}"
+   Règles de forme, à respecter strictement :
+   - La formule d'appel est TOUJOURS générique : "Bonjour," seul (ou "Bonjour Madame," / "Bonjour Monsieur," si le genre est clairement identifiable) — ne jamais reprendre le nom ou le prénom du client après "Bonjour".
+   - Structure en plusieurs courts paragraphes séparés par une ligne vide (une vraie mise en page email, pas un bloc de texte compact) : la formule d'appel seule sur sa ligne, puis un paragraphe de remerciement, puis un paragraphe avec la demande concrète, puis la formule de politesse finale, puis la signature sur sa propre ligne.
+   - Orthographe et grammaire françaises irréprochables : chaque phrase commence par une majuscule, se termine par une ponctuation correcte, pas de majuscule injustifiée au milieu d'un mot ("vous" et non "Vous", etc.).
+
+   Modèle à suivre pour le contenu (adapte les formulations selon le message reçu, mais garde cette structure en paragraphes séparés) :
+   "Bonjour,\\n\\nJ'ai bien reçu votre message et vous en remercie.\\n\\nPourriez-vous me communiquer votre nom, prénom et votre adresse afin que je puisse vous fixer un rendez-vous pour le devis ?\\n\\nMerci et belle journée.\\n\\n${ownerName}"
 
    - Si le nom/prénom/adresse sont déjà donnés dans le message, ne les redemande pas : propose directement un rendez-vous à la place.
    - Si c'est une demande de rendez-vous déjà précise (date proposée), confirme simplement et demande l'adresse si elle manque.
    - Ne jamais indiquer de prix, même une fourchette.
-   - Pas de formules longues, pas de liste de questions techniques (surface, type de vitrage, accès, etc.).
+   - Reste concis sur le fond (pas de liste de questions techniques : surface, type de vitrage, accès, etc.), mais soigné sur la forme (paragraphes courts et aérés).
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de la forme :
 {"category": "spam|devis|rendezvous|renseignement|autre", "reply": "texte du brouillon ou chaîne vide si non applicable"}`;
