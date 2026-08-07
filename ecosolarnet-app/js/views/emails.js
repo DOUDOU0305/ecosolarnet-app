@@ -2,6 +2,7 @@ import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { getAccessToken, isConnected, disconnect as gmailDisconnect } from "../gmailAuth.js";
 import { listInboxMessages, getMessage, trashMessage, untrashMessage, sendReply, getProfile } from "../gmail.js";
+import { speak } from "../huggyVoice.js";
 
 const CATEGORY_LABELS = {
   devis: "Demande de devis",
@@ -41,6 +42,7 @@ async function paint(container) {
 
     ${pending.length > 0 ? `
       <h2>✍️ Brouillons à valider (${pending.length})</h2>
+      <button type="button" class="btn secondary block" id="read-aloud-btn" style="margin-bottom:12px">🔊 Lire les emails à voix haute</button>
       ${pending.map((e) => draftCardHtml(e)).join("")}
     ` : ""}
 
@@ -99,6 +101,19 @@ function draftCardHtml(e) {
 }
 
 function wireEvents(container) {
+  const readAloudBtn = container.querySelector("#read-aloud-btn");
+  if (readAloudBtn) {
+    readAloudBtn.addEventListener("click", async () => {
+      const all = await Store.getAll("processedEmails");
+      const pending = all.filter((e) => e.decision === "pending").sort((a, b) => b.processedAt - a.processedAt);
+      if (pending.length === 0) return;
+      const speech = pending
+        .map((e) => `${CATEGORY_LABELS[e.category] || "Demande"}, de ${e.from}. ${e.subject}. Brouillon de réponse : ${e.reply}`)
+        .join(" ... Suivant ... ");
+      speak(speech);
+    });
+  }
+
   const connectBtn = container.querySelector("#connect-btn");
   if (connectBtn) {
     connectBtn.addEventListener("click", async () => {

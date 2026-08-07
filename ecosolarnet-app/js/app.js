@@ -5,6 +5,7 @@ import * as planning from "./views/planning.js";
 import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
 import * as emails from "./views/emails.js";
+import * as assistant from "./views/assistant.js";
 import { getSettings } from "./db.js";
 import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
@@ -23,6 +24,7 @@ const routes = {
   waitlist,
   settings,
   emails,
+  assistant,
 };
 
 const viewEl = document.getElementById("view");
