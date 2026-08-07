@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v22";
+const CACHE_NAME = "ecosolarnet-v23";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -18,6 +18,8 @@ const APP_SHELL = [
   "./js/huggyTips.js",
   "./js/huggyVoice.js",
   "./js/toast.js",
+  "./js/gmailAuth.js",
+  "./js/gmail.js",
   "./js/views/dashboard.js",
   "./js/views/clients.js",
   "./js/views/devis.js",
@@ -25,6 +27,7 @@ const APP_SHELL = [
   "./js/views/calendar.js",
   "./js/views/waitlist.js",
   "./js/views/settings.js",
+  "./js/views/emails.js",
   "./js/vendor/jspdf.umd.min.js",
   "./js/vendor/qrcode.min.js",
   "./icons/icon-192.png",
@@ -57,6 +60,8 @@ self.addEventListener("fetch", (event) => {
     "nominatim.openstreetmap.org",
     "api.open-meteo.com",
     "router.project-osrm.org",
+    "gmail.googleapis.com",
+    "accounts.google.com",
   ];
   if (EXTERNAL_HOSTS.some((h) => url.hostname.includes(h))) {
     event.respondWith(fetch(event.request));
