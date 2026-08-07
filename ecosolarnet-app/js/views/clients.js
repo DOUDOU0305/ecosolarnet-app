@@ -3,6 +3,7 @@ import { classifyRegion, geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { formatDuration } from "../timer.js";
 import { wireAddressAutocomplete, wirePostalCityCross } from "../addressAutocomplete.js";
+import { hasMotionPermission, requestMotionPermission, onShake } from "../clientLock.js";
 
 const SERVICE_LABELS = {
   vitres: "Vitres",
@@ -103,10 +104,24 @@ function regionPillClass(region) {
   return "region-autre";
 }
 
+let unlocked = false;
+let idleTimer = null;
+let unsubscribeShake = null;
+
+function stopLockWatch() {
+  if (unsubscribeShake) {
+    unsubscribeShake();
+    unsubscribeShake = null;
+  }
+  clearTimeout(idleTimer);
+}
+
 export async function render(container, params) {
   if (params && params.id) {
+    stopLockWatch();
     return renderForm(container, params.id === "new" ? null : params.id);
   }
+  unlocked = false;
   return renderList(container);
 }
 
@@ -122,15 +137,29 @@ async function renderList(container) {
     return { avg, count: list.length };
   }
 
+  const showReal = unlocked || clients.length === 0;
+  const needsPermission = !hasMotionPermission();
+
   container.innerHTML = `
-    <h1>Clients</h1>
+    <h1 id="clients-title">Clients</h1>
+    ${needsPermission ? `
+      <div class="card" style="background:var(--teal-light)">
+        <p class="muted" style="margin:0 0 8px">Autorisez l'accès aux mouvements pour pouvoir secouer votre téléphone et révéler la liste.</p>
+        <button type="button" class="btn secondary block" id="enable-motion-btn">Autoriser</button>
+      </div>
+    ` : ""}
     <div class="stat-row" style="grid-template-columns:1fr">
       <div class="stat-card">
-        <div class="num">${clients.length}</div>
+        <div class="num">${showReal ? clients.length : 0}</div>
         <div class="label">Clients</div>
       </div>
     </div>
-    ${clients.length === 0 ? `
+    ${!showReal ? `
+      <div class="empty-state">
+        <div class="big">👤</div>
+        <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
+      </div>
+    ` : clients.length === 0 ? `
       <div class="empty-state">
         <div class="big">👤</div>
         <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
@@ -165,6 +194,51 @@ async function renderList(container) {
       location.hash = `#/clients/${el.dataset.id}`;
     });
   });
+
+  const enableBtn = container.querySelector("#enable-motion-btn");
+  if (enableBtn) {
+    enableBtn.addEventListener("click", async () => {
+      const granted = await requestMotionPermission();
+      showToast(granted ? "Autorisé" : "Non autorisé");
+      await renderList(container);
+    });
+  }
+
+  wireLock(container);
+}
+
+function toggleUnlocked(container) {
+  unlocked = !unlocked;
+  renderList(container);
+}
+
+function wireLock(container) {
+  stopLockWatch();
+
+  unsubscribeShake = onShake(() => toggleUnlocked(container));
+
+  let pressTimer = null;
+  const title = container.querySelector("#clients-title");
+  if (title) {
+    title.addEventListener("pointerdown", () => {
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        if (navigator.vibrate) navigator.vibrate(10);
+        toggleUnlocked(container);
+      }, 3000);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => {
+      title.addEventListener(evt, () => clearTimeout(pressTimer));
+    });
+  }
+
+  if (unlocked) {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      unlocked = false;
+      renderList(container);
+    }, 25000);
+  }
 }
 
 async function renderForm(container, id) {
