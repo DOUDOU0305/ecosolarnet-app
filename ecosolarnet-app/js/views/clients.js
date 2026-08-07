@@ -88,6 +88,7 @@ function wireSwipeRows(container, onDelete) {
 }
 
 const FREQ_LABELS = {
+  hebdomadaire: "Chaque semaine",
   mensuel: "Chaque mois",
   bimestriel: "Tous les 2 mois",
   trimestriel: "Tous les 3 mois",
