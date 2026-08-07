@@ -71,7 +71,8 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de la forme :
     }
 
     const data = await res.json();
-    const text = data.content?.[0]?.text || "{}";
+    const textBlock = (data.content || []).find((block) => block.type === "text");
+    const text = textBlock?.text || "{}";
     let parsed;
     try {
       const match = text.match(/\{[\s\S]*\}/);
