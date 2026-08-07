@@ -1,7 +1,7 @@
 import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { getAccessToken, isConnected, disconnect as gmailDisconnect } from "../gmailAuth.js";
-import { listInboxMessages, getMessage, trashMessage, untrashMessage, sendReply } from "../gmail.js";
+import { listInboxMessages, getMessage, trashMessage, untrashMessage, sendReply, getProfile } from "../gmail.js";
 
 const CATEGORY_LABELS = {
   devis: "Demande de devis",
@@ -28,6 +28,7 @@ async function paint(container) {
     <div class="card">
       ${connected ? `
         <strong>Gmail connecté</strong>
+        <p class="muted" id="connected-account" style="margin:2px 0 8px">Vérification du compte…</p>
         <p class="muted" style="margin:4px 0 12px">Les publicités et arnaques sont mises à la corbeille automatiquement. Les réponses aux demandes de devis, rendez-vous et renseignements sont préparées mais jamais envoyées sans votre accord.</p>
         <button type="button" class="btn block" id="scan-btn" ${busy ? "disabled" : ""}>${busy ? "Analyse en cours…" : "🔍 Analyser ma boîte"}</button>
         <button type="button" class="btn secondary block" id="disconnect-btn" style="margin-top:8px">Déconnecter Gmail</button>
@@ -67,6 +68,18 @@ async function paint(container) {
   `;
 
   wireEvents(container);
+
+  if (connected) {
+    const accountLine = container.querySelector("#connected-account");
+    getAccessToken({ interactive: false })
+      .then((token) => getProfile(token))
+      .then((profile) => {
+        if (accountLine) accountLine.textContent = `Compte : ${profile.emailAddress}`;
+      })
+      .catch(() => {
+        if (accountLine) accountLine.textContent = "";
+      });
+  }
 }
 
 function draftCardHtml(e) {
@@ -127,8 +140,16 @@ function wireEvents(container) {
         showToast("Email restauré dans la boîte de réception");
         await paint(container);
       } catch (err) {
-        showToast("Reconnectez Gmail puis réessayez (" + (err.message || err) + ")");
-        btn.disabled = false;
+        const message = err.message || String(err);
+        if (message.includes("404")) {
+          // Email supprimé définitivement (corbeille Gmail vidée) : plus rien à restaurer, on nettoie la ligne.
+          await Store.delete("processedEmails", id);
+          showToast("Cet email a été supprimé définitivement de Gmail, il ne peut plus être restauré");
+          await paint(container);
+        } else {
+          showToast("Reconnectez Gmail puis réessayez (" + message + ")");
+          btn.disabled = false;
+        }
       }
     });
   });
@@ -256,7 +277,11 @@ async function runScan(container) {
     }
 
     if (toProcess.length === 0) {
-      showToast("Aucun nouvel email à analyser");
+      showToast(
+        messages.length === 0
+          ? "Gmail n'a renvoyé aucun email dans les 14 derniers jours"
+          : `${messages.length} email(s) reçu(s) mais déjà traité(s) auparavant`
+      );
     } else if (errorCount > 0) {
       showToast(`${messages.length} email(s) trouvé(s), ${errorCount} erreur(s) : ${firstError}`);
     } else {

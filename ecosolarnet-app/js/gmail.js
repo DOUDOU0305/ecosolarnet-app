@@ -15,6 +15,10 @@ async function gmailFetch(token, path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+export async function getProfile(token) {
+  return gmailFetch(token, "/profile");
+}
+
 export async function listInboxMessages(token, { maxResults = 15, query = "in:inbox newer_than:14d" } = {}) {
   const data = await gmailFetch(token, `/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`);
   return data.messages || [];
