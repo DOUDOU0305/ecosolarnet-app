@@ -15,7 +15,7 @@ async function gmailFetch(token, path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-export async function listInboxMessages(token, { maxResults = 15, query = "in:inbox is:unread newer_than:30d" } = {}) {
+export async function listInboxMessages(token, { maxResults = 15, query = "in:inbox newer_than:14d" } = {}) {
   const data = await gmailFetch(token, `/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`);
   return data.messages || [];
 }

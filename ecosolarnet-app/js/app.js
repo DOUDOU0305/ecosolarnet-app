@@ -8,6 +8,12 @@ import * as emails from "./views/emails.js";
 import { getSettings } from "./db.js";
 import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
+import { consumeRedirectToken } from "./gmailAuth.js";
+
+if (location.hash.includes("access_token=")) {
+  consumeRedirectToken();
+  history.replaceState(null, "", `${location.pathname}${location.search}#/emails`);
+}
 
 const routes = {
   dashboard,
