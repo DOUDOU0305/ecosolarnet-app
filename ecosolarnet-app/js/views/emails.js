@@ -204,6 +204,8 @@ async function runScan(container) {
 
     let trashedCount = 0;
     let draftCount = 0;
+    let errorCount = 0;
+    let firstError = "";
 
     for (const m of toProcess) {
       try {
@@ -247,12 +249,16 @@ async function runScan(container) {
           });
         }
       } catch (err) {
+        errorCount++;
+        if (!firstError) firstError = err.message || String(err);
         console.error("Erreur traitement email", m.id, err);
       }
     }
 
     if (toProcess.length === 0) {
       showToast("Aucun nouvel email à analyser");
+    } else if (errorCount > 0) {
+      showToast(`${messages.length} email(s) trouvé(s), ${errorCount} erreur(s) : ${firstError}`);
     } else {
       showToast(`Analyse terminée : ${draftCount} brouillon(s), ${trashedCount} mis à la corbeille`);
     }

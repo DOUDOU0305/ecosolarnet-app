@@ -11,7 +11,7 @@ exports.handler = async function handler(event) {
   }
 
   const { subject = "", from = "", body = "", companyName = "ECOSOLARNET" } = payload;
-  const ownerName = "Steve";
+  const ownerName = "Steve Peters";
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -29,13 +29,15 @@ Tu reçois le contenu d'un email arrivé dans sa boîte professionnelle. Ta tâc
    - "renseignement" : le client pose une question générale sur les services, zones couvertes, disponibilités, etc.
    - "autre" : tout le reste (email personnel, administratif, facture fournisseur, conversation déjà en cours, etc.) — ne pas générer de réponse
 
-2. Si la catégorie est "devis", "rendezvous" ou "renseignement", rédige un brouillon de réponse en français, ton chaleureux et professionnel, signé "${ownerName}", qui :
-   - remercie pour le message
-   - répond aux éléments concrets mentionnés
-   - si des informations manquent pour chiffrer précisément (adresse, taille du bien, type de vitrage, accès), les demande poliment
-   - propose de rappeler ou de fixer un rendez-vous pour affiner
-   - reste courte (5 à 8 lignes maximum)
-   Ne jamais indiquer de prix ferme sans confirmation, seulement des fourchettes si c'est pertinent.
+2. Si la catégorie est "devis", "rendezvous" ou "renseignement", rédige un brouillon de réponse en français, très court et direct (style texto/SMS professionnel, pas un email formel long), signé "${ownerName}". ${ownerName} donne ses devis en visitant sur place, jamais par écrit : le but de la réponse n'est donc PAS de chiffrer ou de poser plein de questions techniques, mais simplement d'obtenir nom, prénom et adresse pour fixer un rendez-vous.
+
+   Suis strictement ce modèle (4 lignes maximum, adapte juste la formule de politesse et le contenu selon le message reçu) :
+   "Bonjour [Madame/Monsieur si connu], j'ai bien reçu votre message et vous en remercie. Pourriez-vous me communiquer un nom, prénom et votre adresse pour que je puisse vous fixer un rendez-vous pour le devis ? Merci et belle journée. ${ownerName}"
+
+   - Si le nom/prénom/adresse sont déjà donnés dans le message, ne les redemande pas : propose directement un rendez-vous à la place.
+   - Si c'est une demande de rendez-vous déjà précise (date proposée), confirme simplement et demande l'adresse si elle manque.
+   - Ne jamais indiquer de prix, même une fourchette.
+   - Pas de formules longues, pas de liste de questions techniques (surface, type de vitrage, accès, etc.).
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de la forme :
 {"category": "spam|devis|rendezvous|renseignement|autre", "reply": "texte du brouillon ou chaîne vide si non applicable"}`;

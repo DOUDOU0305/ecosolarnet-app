@@ -46,7 +46,6 @@ function startRedirectFlow() {
     response_type: "token",
     scope: SCOPES,
     include_granted_scopes: "true",
-    prompt: "consent",
     state,
   });
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
