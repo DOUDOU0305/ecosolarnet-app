@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v33";
+const CACHE_NAME = "ecosolarnet-v34";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -21,7 +21,6 @@ const APP_SHELL = [
   "./js/gmailAuth.js",
   "./js/gmail.js",
   "./js/backup.js",
-  "./js/clientLock.js",
   "./js/views/dashboard.js",
   "./js/views/clients.js",
   "./js/views/devis.js",

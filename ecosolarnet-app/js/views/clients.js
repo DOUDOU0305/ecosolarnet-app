@@ -3,7 +3,6 @@ import { classifyRegion, geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { formatDuration } from "../timer.js";
 import { wireAddressAutocomplete, wirePostalCityCross } from "../addressAutocomplete.js";
-import { hasMotionPermission, requestMotionPermission, onShake } from "../clientLock.js";
 
 const SERVICE_LABELS = {
   vitres: "Vitres",
@@ -106,24 +105,10 @@ function regionPillClass(region) {
 
 let unlocked = false;
 let idleTimer = null;
-let unsubscribeShake = null;
-let unsubscribeDebug = null;
-
-function stopLockWatch() {
-  if (unsubscribeShake) {
-    unsubscribeShake();
-    unsubscribeShake = null;
-  }
-  if (unsubscribeDebug) {
-    unsubscribeDebug();
-    unsubscribeDebug = null;
-  }
-  clearTimeout(idleTimer);
-}
 
 export async function render(container, params) {
   if (params && params.id) {
-    stopLockWatch();
+    clearTimeout(idleTimer);
     return renderForm(container, params.id === "new" ? null : params.id);
   }
   unlocked = false;
@@ -143,20 +128,9 @@ async function renderList(container) {
   }
 
   const showReal = unlocked || clients.length === 0;
-  const needsPermission = !hasMotionPermission();
 
   container.innerHTML = `
     <h1 id="clients-title">Clients</h1>
-    ${needsPermission ? `
-      <div class="card" style="background:var(--teal-light)">
-        <p class="muted" style="margin:0 0 8px">Autorisez l'accès aux mouvements pour pouvoir secouer votre téléphone et révéler la liste.</p>
-        <button type="button" class="btn secondary block" id="enable-motion-btn">Autoriser</button>
-      </div>
-    ` : ""}
-    <div class="card" style="background:var(--fill)">
-      <p class="muted" style="margin:0 0 4px;font-weight:600">🔧 Diagnostic mouvement (temporaire)</p>
-      <p class="muted" id="motion-debug" style="margin:0;font-family:monospace;font-size:12px">En attente de données…</p>
-    </div>
     <div class="stat-row" style="grid-template-columns:1fr">
       <div class="stat-card">
         <div class="num">${showReal ? clients.length : 0}</div>
@@ -204,15 +178,6 @@ async function renderList(container) {
     });
   });
 
-  const enableBtn = container.querySelector("#enable-motion-btn");
-  if (enableBtn) {
-    enableBtn.addEventListener("click", async () => {
-      const granted = await requestMotionPermission();
-      showToast(granted ? "Autorisé — secouez le téléphone pour tester" : "Non autorisé, réessayez");
-      await renderList(container);
-    });
-  }
-
   wireLock(container);
 }
 
@@ -222,10 +187,7 @@ function toggleUnlocked(container) {
 }
 
 function wireLock(container) {
-  stopLockWatch();
-
-  unsubscribeShake = onShake(() => toggleUnlocked(container));
-  unsubscribeDebug = wireMotionDebug(container);
+  clearTimeout(idleTimer);
 
   let pressTimer = null;
   const title = container.querySelector("#clients-title");
@@ -249,40 +211,6 @@ function wireLock(container) {
       renderList(container);
     }, 25000);
   }
-}
-
-function wireMotionDebug(container) {
-  let lastUpdate = 0;
-  let eventCount = 0;
-
-  function handleMotion(e) {
-    eventCount++;
-    const now = Date.now();
-    if (now - lastUpdate < 150) return;
-    lastUpdate = now;
-
-    const el = container.querySelector("#motion-debug");
-    if (!el) return;
-
-    const acc = e.accelerationIncludingGravity || e.acceleration;
-    if (!acc || acc.x == null) {
-      el.textContent = `Événements reçus : ${eventCount}, mais aucune donnée d'accélération (acc=null)`;
-      return;
-    }
-    const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-    const baseline = e.accelerationIncludingGravity ? 9.8 : 0;
-    const deviation = Math.abs(magnitude - baseline);
-    el.textContent = `Événements : ${eventCount} | magnitude : ${magnitude.toFixed(1)} | écart : ${deviation.toFixed(1)} (seuil : 9)`;
-  }
-
-  window.addEventListener("devicemotion", handleMotion);
-  setTimeout(() => {
-    if (eventCount === 0) {
-      const el = container.querySelector("#motion-debug");
-      if (el) el.textContent = "Aucun événement de mouvement reçu après 3s — le capteur ne répond pas (permission non accordée ?)";
-    }
-  }, 3000);
-  return () => window.removeEventListener("devicemotion", handleMotion);
 }
 
 async function renderForm(container, id) {
