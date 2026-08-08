@@ -107,11 +107,16 @@ function regionPillClass(region) {
 let unlocked = false;
 let idleTimer = null;
 let unsubscribeShake = null;
+let unsubscribeDebug = null;
 
 function stopLockWatch() {
   if (unsubscribeShake) {
     unsubscribeShake();
     unsubscribeShake = null;
+  }
+  if (unsubscribeDebug) {
+    unsubscribeDebug();
+    unsubscribeDebug = null;
   }
   clearTimeout(idleTimer);
 }
@@ -148,6 +153,10 @@ async function renderList(container) {
         <button type="button" class="btn secondary block" id="enable-motion-btn">Autoriser</button>
       </div>
     ` : ""}
+    <div class="card" style="background:var(--fill)">
+      <p class="muted" style="margin:0 0 4px;font-weight:600">🔧 Diagnostic mouvement (temporaire)</p>
+      <p class="muted" id="motion-debug" style="margin:0;font-family:monospace;font-size:12px">En attente de données…</p>
+    </div>
     <div class="stat-row" style="grid-template-columns:1fr">
       <div class="stat-card">
         <div class="num">${showReal ? clients.length : 0}</div>
@@ -216,6 +225,7 @@ function wireLock(container) {
   stopLockWatch();
 
   unsubscribeShake = onShake(() => toggleUnlocked(container));
+  unsubscribeDebug = wireMotionDebug(container);
 
   let pressTimer = null;
   const title = container.querySelector("#clients-title");
@@ -239,6 +249,40 @@ function wireLock(container) {
       renderList(container);
     }, 25000);
   }
+}
+
+function wireMotionDebug(container) {
+  let lastUpdate = 0;
+  let eventCount = 0;
+
+  function handleMotion(e) {
+    eventCount++;
+    const now = Date.now();
+    if (now - lastUpdate < 150) return;
+    lastUpdate = now;
+
+    const el = container.querySelector("#motion-debug");
+    if (!el) return;
+
+    const acc = e.accelerationIncludingGravity || e.acceleration;
+    if (!acc || acc.x == null) {
+      el.textContent = `Événements reçus : ${eventCount}, mais aucune donnée d'accélération (acc=null)`;
+      return;
+    }
+    const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+    const baseline = e.accelerationIncludingGravity ? 9.8 : 0;
+    const deviation = Math.abs(magnitude - baseline);
+    el.textContent = `Événements : ${eventCount} | magnitude : ${magnitude.toFixed(1)} | écart : ${deviation.toFixed(1)} (seuil : 9)`;
+  }
+
+  window.addEventListener("devicemotion", handleMotion);
+  setTimeout(() => {
+    if (eventCount === 0) {
+      const el = container.querySelector("#motion-debug");
+      if (el) el.textContent = "Aucun événement de mouvement reçu après 3s — le capteur ne répond pas (permission non accordée ?)";
+    }
+  }, 3000);
+  return () => window.removeEventListener("devicemotion", handleMotion);
 }
 
 async function renderForm(container, id) {
