@@ -199,7 +199,7 @@ async function renderList(container) {
   if (enableBtn) {
     enableBtn.addEventListener("click", async () => {
       const granted = await requestMotionPermission();
-      showToast(granted ? "Autorisé" : "Non autorisé");
+      showToast(granted ? "Autorisé — secouez le téléphone pour tester" : "Non autorisé, réessayez");
       await renderList(container);
     });
   }
