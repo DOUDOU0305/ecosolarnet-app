@@ -73,9 +73,14 @@ export async function render(container) {
             <label>Montant à payer (€)</label>
             <input type="number" step="0.01" min="0" id="qr-amount-input" placeholder="Ex : 120">
           </div>
-          <div style="text-align:center;margin-bottom:14px">
+          <div style="text-align:center;margin-bottom:6px">
             <div id="pay-qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
             <p class="muted" style="margin:6px 0 0">💳 Payer par QR code</p>
+            <p class="muted" style="margin:2px 0 0;font-size:11.5px">À scanner depuis l'appli bancaire du client (pas l'appareil photo)</p>
+          </div>
+          <div class="card-row" style="background:var(--fill);border-radius:var(--radius-sm);padding:9px 12px;margin-bottom:14px">
+            <span class="muted" style="font-size:13px">IBAN : ${escapeHtml(settings.iban)}</span>
+            <button type="button" class="btn secondary small" id="copy-iban-btn">Copier</button>
           </div>
         ` : ""}
         ${settings.googleReviewUrl ? `
@@ -144,6 +149,14 @@ export async function render(container) {
       clearTimeout(qrDebounce);
       const val = parseFloat(e.target.value) || 0;
       qrDebounce = setTimeout(() => renderPayQr(val), 300);
+    });
+    container.querySelector("#copy-iban-btn").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(settings.iban.replace(/\s+/g, ""));
+        showToast("IBAN copié");
+      } catch {
+        showToast("Impossible de copier — sélectionnez le texte manuellement");
+      }
     });
   }
 
