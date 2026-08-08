@@ -81,6 +81,8 @@ export const DEFAULT_SETTINGS = {
   postalCode: "6280",
   city: "Gerpinnes",
   country: "Belgique",
+  iban: "",
+  bic: "",
   baseLat: null,
   baseLng: null,
   rateHainautMin: 35,
