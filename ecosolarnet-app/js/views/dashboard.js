@@ -38,10 +38,10 @@ export async function render(container) {
   function appointmentsForDate(dateStr) {
     const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
     if (times.length > 0) {
-      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName }));
+      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName, clientId: t.clientId }));
     }
     const entry = entries.find((e) => e.date === dateStr);
-    return entry ? [{ time: "", name: entry.label }] : [];
+    return entry ? [{ time: "", name: entry.label, clientId: null }] : [];
   }
 
   const todayAppts = appointmentsForDate(todayStr);
@@ -55,50 +55,14 @@ export async function render(container) {
     <div id="departure-banner-zone"></div>
 
     <div class="card">
-      <h3 style="margin-top:0">Chronomètre</h3>
-      <div id="timer-zone"></div>
-      <div class="checkbox-row" style="margin-top:10px">
-        <input type="checkbox" id="auto-timer-toggle" ${settings.autoTimerEnabled ? "checked" : ""}>
-        <label for="auto-timer-toggle" style="margin:0;font-weight:400;color:var(--text)">Suivi automatique par GPS (tant que l'appli reste ouverte)</label>
-      </div>
-      <p class="muted" id="auto-timer-status" style="margin:6px 0 0"></p>
-    </div>
-
-    ${settings.iban || settings.googleReviewUrl ? `
-      <div class="card">
-        <h3 style="margin-top:0">Codes QR pour le client</h3>
-        ${settings.iban ? `
-          <div class="field">
-            <label>Montant à payer (€)</label>
-            <input type="number" step="0.01" min="0" id="qr-amount-input" placeholder="Ex : 120">
-          </div>
-          <div style="text-align:center;margin-bottom:6px">
-            <div id="pay-qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
-            <p class="muted" style="margin:6px 0 0">💳 Payer par QR code</p>
-            <p class="muted" style="margin:2px 0 0;font-size:11.5px">À scanner depuis l'appli bancaire du client (pas l'appareil photo)</p>
-          </div>
-          <div class="card-row" style="background:var(--fill);border-radius:var(--radius-sm);padding:9px 12px;margin-bottom:14px">
-            <span class="muted" style="font-size:13px">IBAN : ${escapeHtml(settings.iban)}</span>
-            <button type="button" class="btn secondary small" id="copy-iban-btn">Copier</button>
-          </div>
-        ` : ""}
-        ${settings.googleReviewUrl ? `
-          <div style="text-align:center">
-            <div id="review-qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
-            <p class="muted" style="margin:6px 0 0">⭐ Laisser un avis Google</p>
-          </div>
-        ` : ""}
-      </div>
-    ` : ""}
-
-    <div class="card">
       <h3 style="margin-top:0">Aujourd'hui</h3>
       ${todayAppts.length === 0 ? `
         <p class="muted">Rien de prévu aujourd'hui.</p>
-      ` : todayAppts.map((a) => `
+      ` : todayAppts.map((a, i) => `
         <div class="list-item">
           <span class="muted" style="min-width:48px">${escapeHtml(a.time)}</span>
           <strong style="flex:1;margin-left:6px">${escapeHtml(a.name)}</strong>
+          ${a.clientId ? `<button type="button" class="today-timer-btn" data-client-id="${a.clientId}" data-client-name="${escapeHtml(a.name)}" style="background:none;border:none;font-size:19px;padding:4px 2px;line-height:1;font-family:inherit">⏱️</button>` : ""}
         </div>
       `).join("")}
     </div>
@@ -115,6 +79,41 @@ export async function render(container) {
       `).join("")}
     </div>
 
+    ${settings.iban || settings.googleReviewUrl ? `
+      <div class="card">
+        <h3 style="margin-top:0">Codes QR pour le client</h3>
+        ${settings.iban ? `
+          <div class="field">
+            <label>Montant à payer (€)</label>
+            <input type="number" step="0.01" min="0" id="qr-amount-input" placeholder="Ex : 120">
+          </div>
+          <div style="text-align:center;margin-bottom:6px">
+            <div id="pay-qr-preview" style="display:inline-block;padding:8px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
+            <p class="muted" style="margin:6px 0 0">💳 Payer par QR code</p>
+            <p class="muted" style="margin:2px 0 0;font-size:11.5px">À scanner depuis l'appli bancaire du client (pas l'appareil photo)</p>
+          </div>
+          <div class="card-row" style="background:var(--fill);border-radius:var(--radius-sm);padding:9px 12px;margin-bottom:14px">
+            <span class="muted" style="font-size:13px">IBAN : ${escapeHtml(settings.iban)}</span>
+            <button type="button" class="btn secondary small" id="copy-iban-btn">Copier</button>
+          </div>
+        ` : ""}
+        ${settings.googleReviewUrl ? `
+          <div style="text-align:center">
+            <div id="review-qr-preview" style="display:inline-block;padding:8px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
+            <p class="muted" style="margin:6px 0 0">⭐ Laisser un avis Google</p>
+          </div>
+        ` : ""}
+      </div>
+    ` : ""}
+
+    <div class="card">
+      <div class="card-row" style="margin-bottom:8px">
+        <h3 style="margin:0">Chronomètre</h3>
+        <button type="button" class="btn secondary small" id="auto-timer-toggle-btn">📍 GPS ${settings.autoTimerEnabled ? "activé" : "désactivé"}</button>
+      </div>
+      <div id="timer-zone"></div>
+    </div>
+
     <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:6px 2px 18px">
       <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
       <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
@@ -122,6 +121,28 @@ export async function render(container) {
   `;
 
   await renderTimerZone(container);
+  await updateTodayTimerButtons(container);
+
+  container.querySelectorAll(".today-timer-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const clientId = btn.dataset.clientId;
+      const clientName = btn.dataset.clientName;
+      const active = await getActiveTimer();
+
+      if (active && active.clientId === clientId) {
+        const visit = await stopVisit();
+        if (visit) showToast(`Temps enregistré : ${formatDuration(visit.durationSeconds)}`);
+      } else if (active) {
+        showToast(`Arrêtez d'abord le chrono en cours (${active.clientName})`);
+        return;
+      } else {
+        await startVisit({ id: clientId, name: clientName }, false);
+      }
+      await renderTimerZone(container);
+      await updateTodayTimerButtons(container);
+    });
+  });
 
   async function renderPayQr(amount) {
     const preview = container.querySelector("#pay-qr-preview");
@@ -135,7 +156,7 @@ export async function render(container) {
         remittance: `Paiement ${settings.companyName}`,
       });
       const dataUrl = await generateQrDataUrl(payload, 260);
-      preview.innerHTML = `<img src="${dataUrl}" alt="QR de paiement" style="width:180px;height:180px;display:block">`;
+      preview.innerHTML = `<img src="${dataUrl}" alt="QR de paiement" style="width:130px;height:130px;display:block">`;
     } catch {
       preview.innerHTML = `<p class="muted" style="margin:0">QR indisponible</p>`;
     }
@@ -163,33 +184,32 @@ export async function render(container) {
     generateQrDataUrl(settings.googleReviewUrl, 260)
       .then((dataUrl) => {
         const preview = container.querySelector("#review-qr-preview");
-        if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="QR avis Google" style="width:180px;height:180px;display:block">`;
+        if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="QR avis Google" style="width:130px;height:130px;display:block">`;
       })
       .catch(() => {});
   }
 
-  const autoStatus = container.querySelector("#auto-timer-status");
-  if (settings.autoTimerEnabled) {
-    autoStatus.textContent = "✅ Suivi automatique actif tant que l'appli reste ouverte.";
-  }
-
-  container.querySelector("#auto-timer-toggle").addEventListener("change", async (e) => {
-    const enabled = e.target.checked;
+  const autoToggleBtn = container.querySelector("#auto-timer-toggle-btn");
+  autoToggleBtn.addEventListener("click", async () => {
+    const enabled = !settings.autoTimerEnabled;
+    settings.autoTimerEnabled = enabled;
     await saveSettings({ autoTimerEnabled: enabled });
     if (enabled) {
-      autoStatus.textContent = "Activation du GPS…";
+      autoToggleBtn.textContent = "📍 GPS activation…";
       await startAutoWatch();
-      autoStatus.textContent = "✅ Suivi automatique actif tant que l'appli reste ouverte.";
+      showToast("Suivi GPS automatique activé");
     } else {
       stopAutoWatch();
-      autoStatus.textContent = "";
+      showToast("Suivi GPS automatique désactivé");
     }
+    autoToggleBtn.textContent = `📍 GPS ${enabled ? "activé" : "désactivé"}`;
   });
 
   unsubscribeTimer = onTimerEvent((event, data) => {
     if (event === "start" && data.auto) {
       showToast(`Chrono démarré automatiquement : ${data.clientName}`);
       renderTimerZone(container);
+      updateTodayTimerButtons(container);
     } else if (event === "stop") {
       showToast(
         data.auto
@@ -197,6 +217,7 @@ export async function render(container) {
           : `Temps enregistré : ${formatDuration(data.durationSeconds)}`
       );
       renderTimerZone(container);
+      updateTodayTimerButtons(container);
     } else if (event === "error") {
       showToast(data);
     }
@@ -276,6 +297,14 @@ export async function render(container) {
     .catch(() => {});
 }
 
+async function updateTodayTimerButtons(container) {
+  const active = await getActiveTimer();
+  container.querySelectorAll(".today-timer-btn").forEach((btn) => {
+    const isActive = active && active.clientId === btn.dataset.clientId;
+    btn.textContent = isActive ? "⏹️" : "⏱️";
+  });
+}
+
 async function renderTimerZone(container) {
   const zone = container.querySelector("#timer-zone");
   if (!zone) return;
@@ -318,13 +347,13 @@ async function renderTimerZone(container) {
     const clients = await Store.getAll("clients");
     clients.sort((a, b) => a.name.localeCompare(b.name));
     zone.innerHTML = `
-      <div class="field">
-        <select id="timer-client-select">
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <select id="timer-client-select" style="flex:1;margin-bottom:0">
           <option value="">— Choisir un client —</option>
           ${clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
         </select>
+        <button class="btn" id="start-timer-btn" style="white-space:nowrap" ${clients.length === 0 ? "disabled" : ""}>▶ Démarrer</button>
       </div>
-      <button class="btn block" id="start-timer-btn" ${clients.length === 0 ? "disabled" : ""}>▶ Démarrer</button>
     `;
     zone.querySelector("#start-timer-btn").addEventListener("click", async () => {
       const id = zone.querySelector("#timer-client-select").value;
