@@ -3,7 +3,6 @@ import { getSettings } from "../db.js";
 import { classifyRegion, regionRateRange, haversineKm } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
-import { generateQrDataUrl } from "../qrcode.js";
 
 const SERVICE_LABELS = {
   vitres: "Nettoyage vitres",
@@ -662,29 +661,6 @@ async function renderForm(container, id) {
   });
 }
 
-function stripAccents(str) {
-  return String(str || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
-
-// Format EPC QR Code (norme européenne pour les virements SEPA) : n'importe
-// quelle appli bancaire en Europe sait scanner ce code pour pré-remplir un virement.
-function buildEpcQrPayload({ bic, name, iban, amount, remittance }) {
-  const lines = [
-    "BCD",
-    "002",
-    "1",
-    "SCT",
-    (bic || "").replace(/\s+/g, "").toUpperCase(),
-    stripAccents(name).slice(0, 70),
-    (iban || "").replace(/\s+/g, "").toUpperCase(),
-    `EUR${Math.max(0, amount).toFixed(2)}`,
-    "",
-    "",
-    stripAccents(remittance).slice(0, 140),
-  ];
-  return lines.join("\n");
-}
-
 async function generatePdf(devis, settings) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
@@ -804,41 +780,6 @@ async function generatePdf(devis, settings) {
   doc.setFontSize(9);
   doc.setTextColor(120, 120, 120);
   doc.text("Devis valable 30 jours à compter de la date d'émission.", marginX, y);
-
-  const qrY = y - 8;
-  const qrSize = 26;
-
-  if (settings.iban) {
-    try {
-      const payload = buildEpcQrPayload({
-        bic: settings.bic,
-        name: settings.companyName,
-        iban: settings.iban,
-        amount: totalPayable,
-        remittance: `Devis ${devis.clientName || ""} ${devis.date || ""}`.trim(),
-      });
-      const payQrDataUrl = await generateQrDataUrl(payload, 220);
-      doc.addImage(payQrDataUrl, "PNG", marginX, qrY, qrSize, qrSize);
-      doc.setFontSize(8);
-      doc.setTextColor(13, 110, 100);
-      doc.text("Payer par QR code", marginX, qrY + qrSize + 5);
-    } catch {
-      // pas de QR de paiement si la génération échoue, le reste du devis reste valide
-    }
-  }
-
-  if (settings.googleReviewUrl) {
-    try {
-      const qrDataUrl = await generateQrDataUrl(settings.googleReviewUrl, 200);
-      const qrX = 210 - marginX - qrSize;
-      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
-      doc.setFontSize(8);
-      doc.setTextColor(13, 110, 100);
-      doc.text("Laissez-nous un avis", 210 - marginX, qrY + qrSize + 5, { align: "right" });
-    } catch {
-      // pas de QR si la génération échoue, le reste du devis reste valide
-    }
-  }
 
   if (devis.photos && devis.photos.length > 0) {
     doc.addPage();

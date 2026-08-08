@@ -6,6 +6,8 @@ import { onDepartureEvent, fmtMinutesOfDay } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
 import { speak } from "../huggyVoice.js";
+import { generateQrDataUrl } from "../qrcode.js";
+import { buildEpcQrPayload } from "../paymentQr.js";
 let elapsedIntervalId = null;
 let unsubscribeTimer = null;
 let unsubscribeDeparture = null;
@@ -62,6 +64,29 @@ export async function render(container) {
       <p class="muted" id="auto-timer-status" style="margin:6px 0 0"></p>
     </div>
 
+    ${settings.iban || settings.googleReviewUrl ? `
+      <div class="card">
+        <h3 style="margin-top:0">Codes QR pour le client</h3>
+        <p class="muted" style="margin-top:0">À montrer une fois la prestation terminée.</p>
+        ${settings.iban ? `
+          <div class="field">
+            <label>Montant à payer (€)</label>
+            <input type="number" step="0.01" min="0" id="qr-amount-input" placeholder="Ex : 120">
+          </div>
+          <div style="text-align:center;margin-bottom:14px">
+            <div id="pay-qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
+            <p class="muted" style="margin:6px 0 0">💳 Payer par QR code</p>
+          </div>
+        ` : ""}
+        ${settings.googleReviewUrl ? `
+          <div style="text-align:center">
+            <div id="review-qr-preview" style="display:inline-block;padding:10px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
+            <p class="muted" style="margin:6px 0 0">⭐ Laisser un avis Google</p>
+          </div>
+        ` : ""}
+      </div>
+    ` : ""}
+
     <div class="card">
       <h3 style="margin-top:0">Aujourd'hui</h3>
       ${todayAppts.length === 0 ? `
@@ -93,6 +118,43 @@ export async function render(container) {
   `;
 
   await renderTimerZone(container);
+
+  async function renderPayQr(amount) {
+    const preview = container.querySelector("#pay-qr-preview");
+    if (!preview) return;
+    try {
+      const payload = buildEpcQrPayload({
+        bic: settings.bic,
+        name: settings.companyName,
+        iban: settings.iban,
+        amount: amount || 0,
+        remittance: `Paiement ${settings.companyName}`,
+      });
+      const dataUrl = await generateQrDataUrl(payload, 260);
+      preview.innerHTML = `<img src="${dataUrl}" alt="QR de paiement" style="width:180px;height:180px;display:block">`;
+    } catch {
+      preview.innerHTML = `<p class="muted" style="margin:0">QR indisponible</p>`;
+    }
+  }
+
+  if (settings.iban) {
+    renderPayQr(0);
+    let qrDebounce;
+    container.querySelector("#qr-amount-input").addEventListener("input", (e) => {
+      clearTimeout(qrDebounce);
+      const val = parseFloat(e.target.value) || 0;
+      qrDebounce = setTimeout(() => renderPayQr(val), 300);
+    });
+  }
+
+  if (settings.googleReviewUrl) {
+    generateQrDataUrl(settings.googleReviewUrl, 260)
+      .then((dataUrl) => {
+        const preview = container.querySelector("#review-qr-preview");
+        if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="QR avis Google" style="width:180px;height:180px;display:block">`;
+      })
+      .catch(() => {});
+  }
 
   const autoStatus = container.querySelector("#auto-timer-status");
   if (settings.autoTimerEnabled) {
