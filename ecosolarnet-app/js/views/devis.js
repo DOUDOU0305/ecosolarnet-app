@@ -312,6 +312,14 @@ async function renderForm(container, id) {
       </div>
 
       <div class="field">
+        <label>Type de client</label>
+        <select name="clientType">
+          <option value="particulier" ${(devis?.clientType || "particulier") === "particulier" ? "selected" : ""}>Particulier (TVA 21% ajoutée)</option>
+          <option value="professionnel" ${devis?.clientType === "professionnel" ? "selected" : ""}>Professionnel (reste HTVA)</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label>Statut</label>
         <select name="status">
           ${Object.entries(STATUS_LABELS).map(([k, l]) => `<option value="${k}" ${(devis?.status || "brouillon") === k ? "selected" : ""}>${l}</option>`).join("")}
@@ -645,6 +653,7 @@ async function renderForm(container, id) {
       total: totals.total,
       notes: fd.get("notes").trim(),
       status: fd.get("status"),
+      clientType: fd.get("clientType") || "particulier",
       photos: photos.map((p) => ({ id: p.id, blob: p.blob })),
     };
     const saved = await Store.put("devis", record);
@@ -761,10 +770,6 @@ async function generatePdf(devis, settings) {
       rows.push([`${label} (${svc.hours} h × ${svc.rate} €/h)`, fmtEuro((svc.hours || 0) * (svc.rate || 0))]);
     }
   }
-  if (devis.travelFee) {
-    rows.push([`Déplacement (${devis.travelKm} km aller-retour × 2)`, fmtEuro(devis.travelFee)]);
-  }
-
   rows.forEach(([label, amount]) => {
     doc.setTextColor(0, 0, 0);
     doc.text(label, marginX, y);
@@ -778,10 +783,22 @@ async function generatePdf(devis, settings) {
   doc.line(marginX, y, 210 - marginX, y);
   y += 10;
 
-  doc.setFontSize(14);
-  doc.setTextColor(13, 110, 100);
-  doc.text("TOTAL", marginX, y);
-  doc.text(fmtEuro(devis.total), 210 - marginX, y, { align: "right" });
+  const isProfessional = devis.clientType === "professionnel";
+  const totalHtva = devis.total || 0;
+  const totalPayable = isProfessional ? totalHtva : totalHtva * 1.21;
+
+  doc.setFontSize(isProfessional ? 14 : 11);
+  doc.setTextColor(...(isProfessional ? [13, 110, 100] : [90, 90, 90]));
+  doc.text("Total HTVA", marginX, y);
+  doc.text(fmtEuro(totalHtva), 210 - marginX, y, { align: "right" });
+
+  if (!isProfessional) {
+    y += 9;
+    doc.setFontSize(14);
+    doc.setTextColor(13, 110, 100);
+    doc.text("Total TVAC (21%)", marginX, y);
+    doc.text(fmtEuro(totalPayable), 210 - marginX, y, { align: "right" });
+  }
 
   y += 20;
   doc.setFontSize(9);
@@ -797,7 +814,7 @@ async function generatePdf(devis, settings) {
         bic: settings.bic,
         name: settings.companyName,
         iban: settings.iban,
-        amount: devis.total || 0,
+        amount: totalPayable,
         remittance: `Devis ${devis.clientName || ""} ${devis.date || ""}`.trim(),
       });
       const payQrDataUrl = await generateQrDataUrl(payload, 220);
