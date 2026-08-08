@@ -22,6 +22,14 @@ const STATUS_LABELS = {
 
 const FORMULE_LABELS = { ext: "Extérieur", full: "Intérieur + extérieur" };
 const TYPE_LABELS = { ponctuel: "Ponctuel", abonnement: "Abonnement" };
+const FREQUENCY_LABELS = {
+  hebdomadaire: "Hebdomadaire",
+  mensuel: "Mensuel",
+  bimestriel: "Bimestriel",
+  trimestriel: "Trimestriel",
+  semestriel: "Semestriel",
+  annuel: "Annuel",
+};
 
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
@@ -184,6 +192,12 @@ function vitresBlockHtml(svc, settings) {
                 <option value="abonnement" ${svc?.tierType === "abonnement" ? "selected" : ""}>${TYPE_LABELS.abonnement}</option>
               </select>
             </div>
+          </div>
+          <div class="field" id="vitres-frequency-field" style="display:none">
+            <label>Fréquence</label>
+            <select id="vitres-frequency-select">
+              ${Object.entries(FREQUENCY_LABELS).map(([key, label]) => `<option value="${key}" ${(svc?.frequency || "mensuel") === key ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
           </div>
         </div>
         <div class="field">
@@ -398,6 +412,8 @@ async function renderForm(container, id) {
   const vitresTierNormalFields = container.querySelector("#vitres-tier-normal-fields");
   const vitresTierFormuleSelect = container.querySelector("#vitres-tier-formule-select");
   const vitresTierTypeSelect = container.querySelector("#vitres-tier-type-select");
+  const vitresFrequencyField = container.querySelector("#vitres-frequency-field");
+  const vitresFrequencySelect = container.querySelector("#vitres-frequency-select");
   const vitresTierPriceInput = container.querySelector("#vitres-tier-price-input");
   const vitresTierRangeHint = container.querySelector("#vitres-tier-range-hint");
   const vitresTierHint = container.querySelector("#vitres-tier-hint");
@@ -432,6 +448,7 @@ async function renderForm(container, id) {
     vitresTierNormalFields.style.display = "";
     const formule = vitresTierFormuleSelect.value;
     const type = vitresTierTypeSelect.value;
+    vitresFrequencyField.style.display = type === "abonnement" ? "" : "none";
     const range = type === "abonnement" ? (formule === "full" ? t.subFull : t.subExt) : (formule === "full" ? t.full : t.ext);
     const freqNote = type === "abonnement" && t.subFrequency ? ` (${t.subFrequency})` : "";
     vitresTierRangeHint.textContent = `Fourchette conseillée : ${fmtRange(range)}${freqNote}`;
@@ -479,6 +496,7 @@ async function renderForm(container, id) {
           tier: vitresTierSelect.value,
           tierFormule: vitresTierSelect.value !== "tresGrande" ? vitresTierFormuleSelect.value : null,
           tierType: vitresTierSelect.value !== "tresGrande" ? vitresTierTypeSelect.value : null,
+          frequency: vitresTierSelect.value !== "tresGrande" && vitresTierTypeSelect.value === "abonnement" ? vitresFrequencySelect.value : null,
           tierPrice: base,
           surcharges: chosen,
         },
@@ -737,9 +755,11 @@ async function generatePdf(devis, settings) {
       rows.push([`${label} (${svc.panelCount} × ${panelPrice} €)`, fmtEuro(svc.panelCount * panelPrice)]);
       rows.push(["Eau osmosée (forfait)", fmtEuro(svc.osmosisWaterFee)]);
     } else if (svc.pricingMode === "grille") {
-      const desc = svc.tierFormule
+      let desc = svc.tierFormule
         ? `${label} ${svc.tierFormule === "full" ? "intérieur et extérieur" : "extérieur"}`
         : label;
+      if (svc.frequency) desc += ` ${svc.frequency}`;
+      if (devis.travelFee) desc += " (frais de déplacement inclus)";
       const surchargesTotal = (svc.surcharges || []).reduce((s, sc) => s + (sc.amount || 0), 0);
       rows.push([desc, fmtEuro((svc.tierPrice || 0) + surchargesTotal)]);
     } else {
