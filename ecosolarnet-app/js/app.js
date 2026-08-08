@@ -6,6 +6,7 @@ import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
 import * as emails from "./views/emails.js";
 import * as assistant from "./views/assistant.js";
+import * as more from "./views/more.js";
 import { getSettings } from "./db.js";
 import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
@@ -25,7 +26,13 @@ const routes = {
   settings,
   emails,
   assistant,
+  more,
 };
+
+// Ces routes n'ont plus leur propre onglet en bas (pour respecter la limite de
+// 5 onglets recommandée par Apple) : elles sont accessibles via l'onglet "Plus",
+// qui doit donc rester actif visuellement quand on est dessus.
+const MORE_ROUTES = new Set(["waitlist", "emails", "assistant", "settings"]);
 
 const viewEl = document.getElementById("view");
 const tabButtons = document.querySelectorAll(".tab-btn");
@@ -40,8 +47,9 @@ async function renderRoute() {
   const { route, id } = parseHash();
   const mod = routes[route] || routes.dashboard;
 
+  const activeTabRoute = MORE_ROUTES.has(route) ? "more" : route;
   tabButtons.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.route === route);
+    btn.classList.toggle("active", btn.dataset.route === activeTabRoute);
   });
 
   viewEl.scrollTop = 0;

@@ -76,7 +76,7 @@ export async function render(container) {
 
       <div class="card">
         <h3 style="margin-top:0">Paiement par QR code</h3>
-        <p class="muted">Renseignez votre IBAN pour qu'un code QR de paiement apparaisse sur vos devis PDF — vos clients pourront le scanner avec leur appli bancaire pour vous payer directement, sans ressaisir vos coordonnées.</p>
+        <p class="muted">Renseignez votre IBAN pour faire apparaître un code QR de paiement sur l'écran d'accueil — vos clients pourront le scanner avec leur appli bancaire pour vous payer directement, une fois la prestation terminée.</p>
         <div class="field">
           <label>IBAN</label>
           <input name="iban" value="${s.iban}" placeholder="BE00 0000 0000 0000" autocapitalize="characters">

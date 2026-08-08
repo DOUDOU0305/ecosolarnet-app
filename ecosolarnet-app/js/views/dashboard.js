@@ -67,7 +67,6 @@ export async function render(container) {
     ${settings.iban || settings.googleReviewUrl ? `
       <div class="card">
         <h3 style="margin-top:0">Codes QR pour le client</h3>
-        <p class="muted" style="margin-top:0">À montrer une fois la prestation terminée.</p>
         ${settings.iban ? `
           <div class="field">
             <label>Montant à payer (€)</label>
