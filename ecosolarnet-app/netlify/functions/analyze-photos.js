@@ -33,7 +33,15 @@ Pour les vitres, si tu identifies cette prestation, choisis la catégorie de mai
 ${tiersText}
 Choisis aussi la formule : "ext" (extérieur uniquement) ou "full" (intérieur + extérieur) — si les photos ne permettent pas de le déterminer, choisis "ext" par défaut.
 
-Estime aussi, pour les vitres, le temps de nettoyage nécessaire en minutes. C'est une information interne pour Steve (pas pour le client), donc pars du principe pessimiste que les vitres sont très sales et n'ont jamais été nettoyées, même si elles paraissent propres sur la photo — ça lui sert à bloquer assez de temps dans son planning plutôt qu'à être pris de court. Base-toi sur le nombre de fenêtres visibles, leur taille et la catégorie de maison choisie.
+Estime aussi, pour les vitres, le temps de nettoyage nécessaire en minutes, pour une seule personne qui travaille seule. C'est une information interne pour Steve (pas pour le client), donc pars du principe pessimiste que les vitres sont très sales et n'ont jamais été nettoyées, même si elles paraissent propres sur la photo — ça lui sert à bloquer assez de temps dans son planning plutôt qu'à être pris de court.
+
+Un nettoyage de vitres complet comprend plusieurs étapes distinctes qui prennent chacune du temps, ne compte pas juste "un coup de raclette" :
+1. Passage de la tête de loup pour retirer les toiles d'araignées (en hauteur, autour des châssis et corniches)
+2. Dépoussiérage des châssis, intérieur et extérieur
+3. Nettoyage des vitres à proprement parler, intérieur et extérieur : mouiller, passage de la lame (mouilleur), passage du PAD, raclette, essuyage des bords de vitres
+4. Dépoussiérage des appuis de fenêtre
+
+Base ton estimation sur le nombre de fenêtres visibles, leur taille, et la catégorie de maison choisie, en tenant compte de TOUTES ces étapes. Pour référence réelle donnée par Steve : un nettoyage complet a pris 2h30 à deux personnes sur un chantier, soit environ 5 heures (300 minutes) de travail si une seule personne l'avait fait seule — utilise ça comme ordre de grandeur pour une maison de taille standard avec plusieurs fenêtres, et ajuste proportionnellement selon ce que tu vois sur les photos (moins de fenêtres/plus petite maison = moins de temps, plus de fenêtres/plus grande maison = plus de temps). Ne sous-estime pas.
 
 Pour les panneaux solaires, si tu peux compter les panneaux visibles sur la ou les photos, indique ce nombre. Si tu ne peux pas compter avec une confiance raisonnable, ne renvoie pas de nombre.
 
