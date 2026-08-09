@@ -790,9 +790,12 @@ async function renderForm(container, id) {
 
       if (result.servicesDetected.includes("vitres") && result.vitres) {
         container.querySelector("#svc-check-vitres").checked = true;
-        vitresModeSelect.value = "grille";
         if (result.vitres.tier && tiers[result.vitres.tier]) vitresTierSelect.value = result.vitres.tier;
         if (result.vitres.formule === "ext" || result.vitres.formule === "full") vitresTierFormuleSelect.value = result.vitres.formule;
+        if (result.vitres.cleaningTimeMinutes != null) {
+          const hoursInput = container.querySelector("#vitres-hours-input");
+          if (hoursInput) hoursInput.value = Math.round((result.vitres.cleaningTimeMinutes / 60) * 4) / 4;
+        }
         updateVitresVisibility();
         updateVitresTierSuggestion(true);
       }
