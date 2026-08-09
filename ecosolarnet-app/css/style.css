@@ -62,7 +62,7 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: red; /* DIAGNOSTIC TEMPORAIRE */
+  background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -139,9 +139,7 @@ body {
   left: 0;
   right: 0;
   display: flex;
-  background: var(--overlay-blur-bg);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: var(--card);
   border-top: 0.5px solid var(--border);
   padding-bottom: var(--safe-bottom);
   z-index: 20;
