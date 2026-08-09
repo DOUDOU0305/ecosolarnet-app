@@ -67,16 +67,22 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   height: 100%;
-  height: -webkit-fill-available;
   overscroll-behavior-y: none;
+}
+
+/* Verrouille la page entière (aucun rebond/défilement possible au niveau du
+   document) : seul #view défile. Ça évite qu'un rebond élastique du fond de
+   page ne se voie brièvement sous la barre d'onglets fixe sur iOS. */
+body {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  height: -webkit-fill-available;
+  height: 100%;
 }
 
 .topbar {
