@@ -31,6 +31,81 @@ const FREQUENCY_LABELS = {
   annuel: "Annuel",
 };
 
+const SWIPE_OPEN_X = -84;
+let openSwipeRow = null;
+
+function closeSwipeRow(row) {
+  if (!row) return;
+  const content = row.querySelector(".swipe-content");
+  if (content) content.style.transform = "translateX(0)";
+  row.classList.remove("swipe-open");
+  if (openSwipeRow === row) openSwipeRow = null;
+}
+
+function wireSwipeRows(container, onDelete) {
+  container.querySelectorAll(".swipe-row").forEach((row) => {
+    const content = row.querySelector(".swipe-content");
+    const deleteBtn = row.querySelector(".swipe-delete-btn");
+    let startX = 0;
+    let startY = 0;
+    let baseX = 0;
+    let dragging = false;
+    let axis = null;
+
+    content.addEventListener("pointerdown", (e) => {
+      if (openSwipeRow && openSwipeRow !== row) closeSwipeRow(openSwipeRow);
+      startX = e.clientX;
+      startY = e.clientY;
+      baseX = row.classList.contains("swipe-open") ? SWIPE_OPEN_X : 0;
+      dragging = true;
+      axis = null;
+      content.style.transition = "none";
+      content.setPointerCapture(e.pointerId);
+    });
+
+    content.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (axis === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (axis !== "x") return;
+      const x = Math.min(0, Math.max(SWIPE_OPEN_X, baseX + dx));
+      content.style.transform = `translateX(${x}px)`;
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      content.style.transition = "";
+      if (axis !== "x") return;
+      const dx = e.clientX - startX;
+      const finalX = baseX + dx;
+      if (finalX < SWIPE_OPEN_X / 2) {
+        content.style.transform = `translateX(${SWIPE_OPEN_X}px)`;
+        row.classList.add("swipe-open");
+        openSwipeRow = row;
+      } else {
+        closeSwipeRow(row);
+      }
+    }
+
+    content.addEventListener("pointerup", endDrag);
+    content.addEventListener("pointercancel", endDrag);
+
+    content.addEventListener("click", (e) => {
+      if (row.classList.contains("swipe-open")) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSwipeRow(row);
+      }
+    });
+
+    deleteBtn.addEventListener("click", () => onDelete(row.dataset.id));
+  });
+}
+
 function fmtEuro(n) {
   return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + " €";
 }
@@ -97,16 +172,20 @@ async function renderList(container) {
         <p>Aucun devis pour l'instant.<br>Maintenez le doigt sur "Devis" en bas de l'écran pour en créer un.</p>
       </div>
     ` : `
+      <p class="muted" style="font-size:12px">Glissez une ligne vers la gauche pour la supprimer.</p>
       <div class="card">
         ${devisList.map((d) => `
-          <div class="list-item" data-id="${d.id}">
-            <div>
-              <div><strong>${escapeHtml(d.clientName || "Client")}</strong></div>
-              <div class="muted">${escapeHtml(serviceLabelsLine(d))} · ${d.date}</div>
-            </div>
-            <div style="text-align:right">
-              <div><strong>${fmtEuro(d.total)}</strong></div>
-              <span class="badge-status badge-${d.status}">${STATUS_LABELS[d.status]}</span>
+          <div class="swipe-row" data-id="${d.id}">
+            <button type="button" class="swipe-delete-btn">Supprimer</button>
+            <div class="swipe-content list-item">
+              <div>
+                <div><strong>${escapeHtml(d.clientName || "Client")}</strong></div>
+                <div class="muted">${escapeHtml(serviceLabelsLine(d))} · ${d.date}</div>
+              </div>
+              <div style="text-align:right">
+                <div><strong>${fmtEuro(d.total)}</strong></div>
+                <span class="badge-status badge-${d.status}">${STATUS_LABELS[d.status]}</span>
+              </div>
             </div>
           </div>
         `).join("")}
@@ -114,10 +193,19 @@ async function renderList(container) {
     `}
   `;
 
-  container.querySelectorAll(".list-item").forEach((el) => {
+  openSwipeRow = null;
+  container.querySelectorAll(".swipe-content").forEach((el) => {
     el.addEventListener("click", () => {
-      location.hash = `#/devis/${el.dataset.id}`;
+      const row = el.closest(".swipe-row");
+      if (!row.classList.contains("swipe-open")) {
+        location.hash = `#/devis/${row.dataset.id}`;
+      }
     });
+  });
+  wireSwipeRows(container, async (id) => {
+    await Store.delete("devis", id);
+    showToast("Devis supprimé");
+    await renderList(container);
   });
 }
 
@@ -724,8 +812,19 @@ async function renderForm(container, id) {
 
       recompute();
 
+      let notesHtml = "";
+      if (result.vitres?.cleaningTimeMinutes != null) {
+        const mins = result.vitres.cleaningTimeMinutes;
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        const duration = h > 0 ? `${h} h${m > 0 ? ` ${m.toString().padStart(2, "0")}` : ""}` : `${m} min`;
+        notesHtml += `<p style="margin:0 0 6px;font-weight:600">⏱️ Temps de nettoyage vitres estimé : ${duration} (en supposant des vitres très sales — pour votre planning, pas pour le client)</p>`;
+      }
       if (result.notes) {
-        aiNotesBox.textContent = `🤖 ${result.notes} — vérifiez et ajustez les champs avant d'enregistrer.`;
+        notesHtml += `<p style="margin:0">🤖 ${escapeHtml(result.notes)} — vérifiez et ajustez les champs avant d'enregistrer.</p>`;
+      }
+      if (notesHtml) {
+        aiNotesBox.innerHTML = notesHtml;
         aiNotesBox.style.display = "";
       }
       if (result.servicesDetected.length === 0) {

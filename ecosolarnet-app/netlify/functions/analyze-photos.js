@@ -33,6 +33,8 @@ Pour les vitres, si tu identifies cette prestation, choisis la catégorie de mai
 ${tiersText}
 Choisis aussi la formule : "ext" (extérieur uniquement) ou "full" (intérieur + extérieur) — si les photos ne permettent pas de le déterminer, choisis "ext" par défaut.
 
+Estime aussi, pour les vitres, le temps de nettoyage nécessaire en minutes. C'est une information interne pour Steve (pas pour le client), donc pars du principe pessimiste que les vitres sont très sales et n'ont jamais été nettoyées, même si elles paraissent propres sur la photo — ça lui sert à bloquer assez de temps dans son planning plutôt qu'à être pris de court. Base-toi sur le nombre de fenêtres visibles, leur taille et la catégorie de maison choisie.
+
 Pour les panneaux solaires, si tu peux compter les panneaux visibles sur la ou les photos, indique ce nombre. Si tu ne peux pas compter avec une confiance raisonnable, ne renvoie pas de nombre.
 
 Pour véranda / pergola / carport, si la prestation est visible, estime un nombre d'heures de travail raisonnable (nombre décimal, ex: 1.5) pour un nettoyage complet, en te basant sur la taille apparente.
@@ -40,7 +42,7 @@ Pour véranda / pergola / carport, si la prestation est visible, estime un nombr
 Sois prudent : ce ne sont que des estimations à partir de photos, que Steve vérifiera et ajustera lui-même avant d'envoyer le devis. N'invente rien qui n'est pas visible sur les photos.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exact :
-{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext"}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
+{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
 
 N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport) que si ce service apparaît dans "servicesDetected". "notes" doit toujours être rempli.`;
 
