@@ -315,8 +315,22 @@ async function renderForm(container, id) {
       <div class="field">
         <label>Photos</label>
         <input type="file" accept="image/*" capture="environment" id="photo-input" multiple style="display:none">
-        <button type="button" class="btn secondary" id="add-photo-btn">📷 Ajouter une photo</button>
+        <input type="file" accept="image/*" id="photo-input-library" multiple style="display:none">
+        <button type="button" class="btn secondary" id="add-photo-btn">📷 Photo</button>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">Appui court : prendre une photo. Appui long : choisir aussi dans vos photos.</p>
         <div id="photo-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+        <button type="button" class="btn secondary" id="analyze-photos-btn" style="display:none;margin-top:10px">🤖 Analyser les photos avec l'IA</button>
+        <div id="ai-photo-notes" class="muted" style="display:none;margin-top:8px;font-size:13px;background:var(--fill);border-radius:10px;padding:10px"></div>
+      </div>
+
+      <div id="photo-action-sheet-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:50">
+        <div style="position:absolute;left:12px;right:12px;bottom:calc(70px + var(--safe-bottom));background:var(--card);border-radius:14px;overflow:hidden">
+          <button type="button" id="sheet-camera-btn" style="display:block;width:100%;padding:16px;border:none;background:none;font-size:17px;color:var(--text);border-bottom:0.5px solid var(--border)">📷 Prendre une photo</button>
+          <button type="button" id="sheet-library-btn" style="display:block;width:100%;padding:16px;border:none;background:none;font-size:17px;color:var(--text)">🖼️ Choisir dans mes photos</button>
+        </div>
+        <div style="position:absolute;left:12px;right:12px;bottom:calc(12px + var(--safe-bottom));background:var(--card);border-radius:14px;overflow:hidden">
+          <button type="button" id="sheet-cancel-btn" style="display:block;width:100%;padding:16px;border:none;background:none;font-size:17px;font-weight:600;color:var(--text)">Annuler</button>
+        </div>
       </div>
 
       <div class="field">
@@ -359,6 +373,7 @@ async function renderForm(container, id) {
 
   function renderPhotoGrid() {
     const grid = container.querySelector("#photo-grid");
+    container.querySelector("#analyze-photos-btn").style.display = photos.length > 0 ? "" : "none";
     if (photos.length === 0) {
       grid.innerHTML = `<p class="muted" style="margin:0">Aucune photo ajoutée.</p>`;
       return;
@@ -382,10 +397,49 @@ async function renderForm(container, id) {
   }
   renderPhotoGrid();
 
-  container.querySelector("#add-photo-btn").addEventListener("click", () => {
+  const photoBtn = container.querySelector("#add-photo-btn");
+  const photoSheet = container.querySelector("#photo-action-sheet-backdrop");
+  let longPressTimer = null;
+  let longPressTriggered = false;
+
+  function openPhotoSheet() {
+    photoSheet.style.display = "block";
+  }
+  function closePhotoSheet() {
+    photoSheet.style.display = "none";
+  }
+
+  photoBtn.addEventListener("pointerdown", () => {
+    longPressTriggered = false;
+    longPressTimer = setTimeout(() => {
+      longPressTriggered = true;
+      openPhotoSheet();
+    }, 500);
+  });
+  photoBtn.addEventListener("pointerup", () => {
+    clearTimeout(longPressTimer);
+    if (!longPressTriggered) {
+      container.querySelector("#photo-input").click();
+    }
+  });
+  photoBtn.addEventListener("pointerleave", () => clearTimeout(longPressTimer));
+  photoBtn.addEventListener("pointercancel", () => clearTimeout(longPressTimer));
+  photoBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  photoSheet.addEventListener("click", (e) => {
+    if (e.target === photoSheet) closePhotoSheet();
+  });
+  container.querySelector("#sheet-camera-btn").addEventListener("click", () => {
+    closePhotoSheet();
     container.querySelector("#photo-input").click();
   });
-  container.querySelector("#photo-input").addEventListener("change", async (e) => {
+  container.querySelector("#sheet-library-btn").addEventListener("click", () => {
+    closePhotoSheet();
+    container.querySelector("#photo-input-library").click();
+  });
+  container.querySelector("#sheet-cancel-btn").addEventListener("click", closePhotoSheet);
+
+  async function handlePhotoFiles(e) {
     const files = [...e.target.files];
     e.target.value = "";
     for (const file of files) {
@@ -397,7 +451,9 @@ async function renderForm(container, id) {
       }
     }
     renderPhotoGrid();
-  });
+  }
+  container.querySelector("#photo-input").addEventListener("change", handlePhotoFiles);
+  container.querySelector("#photo-input-library").addEventListener("change", handlePhotoFiles);
 
   const clientSelect = container.querySelector("#client-select");
   const manualNameField = container.querySelector("#manual-name-field");
@@ -621,6 +677,67 @@ async function renderForm(container, id) {
   if (!devis) updateVitresTierSuggestion(true);
   else updateVitresTierSuggestion(false);
   recompute();
+
+  const analyzeBtn = container.querySelector("#analyze-photos-btn");
+  const aiNotesBox = container.querySelector("#ai-photo-notes");
+  analyzeBtn.addEventListener("click", async () => {
+    if (photos.length === 0) return;
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = "🤖 Analyse en cours…";
+    aiNotesBox.style.display = "none";
+    try {
+      const images = await Promise.all(
+        photos.map(async (p) => {
+          const dataUrl = await blobToDataURL(p.blob);
+          return dataUrl.split(",")[1];
+        })
+      );
+      const res = await fetch("/.netlify/functions/analyze-photos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ images, settings }),
+      });
+      if (!res.ok) throw new Error("Erreur serveur");
+      const result = await res.json();
+
+      if (result.servicesDetected.includes("vitres") && result.vitres) {
+        container.querySelector("#svc-check-vitres").checked = true;
+        vitresModeSelect.value = "grille";
+        if (result.vitres.tier && tiers[result.vitres.tier]) vitresTierSelect.value = result.vitres.tier;
+        if (result.vitres.formule === "ext" || result.vitres.formule === "full") vitresTierFormuleSelect.value = result.vitres.formule;
+        updateVitresVisibility();
+        updateVitresTierSuggestion(true);
+      }
+
+      if (result.servicesDetected.includes("panneaux") && result.panneaux?.panelCount != null) {
+        container.querySelector("#svc-check-panneaux").checked = true;
+        container.querySelector("#panneaux-count-input").value = result.panneaux.panelCount;
+      }
+
+      HOURLY_ONLY_TYPES.forEach((type) => {
+        const svc = result[type];
+        if (result.servicesDetected.includes(type) && svc?.hours != null) {
+          container.querySelector(`#svc-check-${type}`).checked = true;
+          container.querySelector(`#${type}-hours-input`).value = svc.hours;
+        }
+      });
+
+      recompute();
+
+      if (result.notes) {
+        aiNotesBox.textContent = `🤖 ${result.notes} — vérifiez et ajustez les champs avant d'enregistrer.`;
+        aiNotesBox.style.display = "";
+      }
+      if (result.servicesDetected.length === 0) {
+        showToast("L'IA n'a rien identifié de précis sur ces photos");
+      }
+    } catch {
+      showToast("Analyse impossible pour le moment");
+    } finally {
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = "🤖 Analyser les photos avec l'IA";
+    }
+  });
 
   container.querySelector("#back-btn").addEventListener("click", () => {
     location.hash = "#/devis";
