@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v47";
+const CACHE_NAME = "ecosolarnet-v48";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -77,7 +77,7 @@ self.addEventListener("fetch", (event) => {
   // Réseau en priorité pour toujours servir la dernière version de l'appli
   // quand la connexion est disponible ; le cache ne sert que de secours hors-ligne.
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "reload" })
       .then((response) => {
         if (response.ok) {
           const clone = response.clone();

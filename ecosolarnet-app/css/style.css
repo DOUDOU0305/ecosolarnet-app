@@ -141,7 +141,7 @@ body {
   display: flex;
   background: var(--card);
   border-top: 0.5px solid var(--border);
-  padding-bottom: 4px;
+  padding-bottom: 0;
   z-index: 20;
 }
 
