@@ -4,6 +4,7 @@ import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
+import { getFrenchVoices, speak } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -193,6 +194,45 @@ export async function render(container) {
       </div>
 
       <div class="card">
+        <h3 style="margin-top:0">Voix de Huggy</h3>
+        <p class="muted">Choisissez la voix qui vous parle dans l'application (assistant vocal, résumé du jour...). La qualité dépend des voix installées sur votre iPhone : pour une voix vraiment naturelle, allez dans <strong>Réglages iPhone → Accessibilité → Contenu énoncé → Voix → Français</strong> et téléchargez une voix "Améliorée" ou "Premium" (les voix par défaut sont plus robotiques).</p>
+
+        <div class="field">
+          <label>Voix utilisée</label>
+          <select name="huggyVoiceGender" id="huggy-gender-select">
+            <option value="homme" ${s.huggyVoiceGender !== "femme" ? "selected" : ""}>Voix homme</option>
+            <option value="femme" ${s.huggyVoiceGender === "femme" ? "selected" : ""}>Voix femme</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Voix homme</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select name="huggyVoiceNameHomme" id="huggy-voice-homme" style="flex:1"></select>
+            <button type="button" class="btn secondary small" data-preview="homme">🔊 Tester</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Voix femme</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select name="huggyVoiceNameFemme" id="huggy-voice-femme" style="flex:1"></select>
+            <button type="button" class="btn secondary small" data-preview="femme">🔊 Tester</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Vitesse (plus lent = plus posé et rassurant)</label>
+          <input type="range" name="huggyVoiceRate" id="huggy-rate-input" min="0.7" max="1.15" step="0.01" value="${s.huggyVoiceRate}">
+        </div>
+        <div class="field">
+          <label>Tonalité (plus grave = plus mature)</label>
+          <input type="range" name="huggyVoicePitch" id="huggy-pitch-input" min="0.8" max="1.2" step="0.01" value="${s.huggyVoicePitch}">
+        </div>
+        <p class="muted" style="font-size:12px">Ces deux réglages s'appliquent de la même façon à la voix homme et à la voix femme.</p>
+      </div>
+
+      <div class="card">
         <h3 style="margin-top:0">Jours de Défense</h3>
         <p class="muted">Ces codes seront proposés dans le calendrier pour marquer un jour comme indisponible (préparation, exercice, tir…).</p>
         <div class="field">
@@ -238,6 +278,37 @@ export async function render(container) {
     }
   }
   await refreshQrPreview(s.googleReviewUrl);
+
+  (async () => {
+    const voices = await getFrenchVoices();
+    const homeSelect = container.querySelector("#huggy-voice-homme");
+    const femmeSelect = container.querySelector("#huggy-voice-femme");
+    if (voices.length === 0) {
+      const msg = `<option value="">Aucune voix française trouvée sur cet appareil</option>`;
+      homeSelect.innerHTML = msg;
+      femmeSelect.innerHTML = msg;
+      return;
+    }
+    const optionsHtml = voices.map((v) => `<option value="${v.name}">${v.name}${v.localService ? "" : " (en ligne)"}</option>`).join("");
+    homeSelect.innerHTML = optionsHtml;
+    femmeSelect.innerHTML = optionsHtml;
+    if (s.huggyVoiceNameHomme && voices.some((v) => v.name === s.huggyVoiceNameHomme)) homeSelect.value = s.huggyVoiceNameHomme;
+    if (s.huggyVoiceNameFemme && voices.some((v) => v.name === s.huggyVoiceNameFemme)) femmeSelect.value = s.huggyVoiceNameFemme;
+  })();
+
+  container.querySelectorAll("[data-preview]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gender = btn.dataset.preview;
+      const voiceName = gender === "femme"
+        ? container.querySelector("#huggy-voice-femme").value
+        : container.querySelector("#huggy-voice-homme").value;
+      speak("Bonjour, je suis Huggy. Voici un exemple de ma voix.", {
+        voiceName,
+        rate: parseFloat(container.querySelector("#huggy-rate-input").value),
+        pitch: parseFloat(container.querySelector("#huggy-pitch-input").value),
+      });
+    });
+  });
 
   let qrDebounce;
   container.querySelector("#google-review-url").addEventListener("input", (e) => {
@@ -306,7 +377,7 @@ export async function render(container) {
     const patch = {};
     for (const [key, value] of fd.entries()) {
       if (key.startsWith("tier_") || key.startsWith("surcharge_") || key === "defenseDayCodes") continue;
-      const numericKeys = ["rateHainautMin", "rateHainautMax", "rateBruxellesMin", "rateBruxellesMax", "travelFeePerKm", "solarPanelPrice", "osmosisWaterFee", "maxClientsPerDay"];
+      const numericKeys = ["rateHainautMin", "rateHainautMax", "rateBruxellesMin", "rateBruxellesMax", "travelFeePerKm", "solarPanelPrice", "osmosisWaterFee", "maxClientsPerDay", "huggyVoiceRate", "huggyVoicePitch"];
       patch[key] = numericKeys.includes(key) ? parseFloat(value) : value;
     }
     patch.defenseDayCodes = fd.get("defenseDayCodes").split(",").map((s) => s.trim()).filter(Boolean);

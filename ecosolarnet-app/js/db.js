@@ -98,6 +98,11 @@ export const DEFAULT_SETTINGS = {
   departureRemindersEnabled: false,
   googleReviewUrl: "https://g.page/r/CQjUFRrPW98OEAE/review",
   defenseDayCodes: ["PE", "PR", "PL", "P", "E", "GWB", "Tirs", "R"],
+  huggyVoiceGender: "homme",
+  huggyVoiceNameHomme: "",
+  huggyVoiceNameFemme: "",
+  huggyVoiceRate: 0.92,
+  huggyVoicePitch: 1,
   windowTiers: {
     petite: {
       label: "Petite maison / Appartement",
