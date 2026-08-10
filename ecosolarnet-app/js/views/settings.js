@@ -4,7 +4,7 @@ import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
-import { getFrenchVoicesByGender, speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
+import { getFrenchVoicesByGender, speak, refreshVoiceSettingsCache, forceReloadVoices } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -231,6 +231,8 @@ export async function render(container) {
         </div>
         <p class="muted" style="font-size:12px">Ces deux réglages s'appliquent de la même façon à la voix homme et à la voix femme.</p>
         <p class="muted" id="huggy-unknown-note" style="font-size:12px;display:none;margin-top:8px"></p>
+        <p class="muted" id="huggy-voice-count" style="font-size:12px;margin-top:8px"></p>
+        <button type="button" class="btn secondary small" id="huggy-refresh-btn" style="margin-top:6px">🔄 Rafraîchir la liste des voix</button>
       </div>
 
       <div class="card">
@@ -280,30 +282,43 @@ export async function render(container) {
   }
   await refreshQrPreview(s.googleReviewUrl);
 
-  (async () => {
+  async function populateHuggyVoices(forceReload) {
+    if (forceReload) await forceReloadVoices();
     const { homme, femme, inconnu } = await getFrenchVoicesByGender();
     const homeSelect = container.querySelector("#huggy-voice-homme");
     const femmeSelect = container.querySelector("#huggy-voice-femme");
     const unknownNote = container.querySelector("#huggy-unknown-note");
+    const countNote = container.querySelector("#huggy-voice-count");
 
-    function fillSelect(select, voices) {
+    function fillSelect(select, voices, previousValue) {
       if (voices.length === 0) {
         select.innerHTML = `<option value="">Aucune voix trouvée sur cet appareil</option>`;
         return;
       }
       select.innerHTML = voices.map((v) => `<option value="${v.name}">${v.name}${v.localService ? "" : " (en ligne)"}</option>`).join("");
+      if (previousValue && voices.some((v) => v.name === previousValue)) select.value = previousValue;
     }
 
-    fillSelect(homeSelect, homme);
-    fillSelect(femmeSelect, femme);
-    if (s.huggyVoiceNameHomme && homme.some((v) => v.name === s.huggyVoiceNameHomme)) homeSelect.value = s.huggyVoiceNameHomme;
-    if (s.huggyVoiceNameFemme && femme.some((v) => v.name === s.huggyVoiceNameFemme)) femmeSelect.value = s.huggyVoiceNameFemme;
+    fillSelect(homeSelect, homme, homeSelect.value || s.huggyVoiceNameHomme);
+    fillSelect(femmeSelect, femme, femmeSelect.value || s.huggyVoiceNameFemme);
 
+    unknownNote.style.display = "none";
     if (inconnu.length > 0) {
       unknownNote.textContent = `ℹ️ ${inconnu.length} voix non classée(s) automatiquement, donc masquée(s) ici : ${inconnu.map((v) => v.name).join(", ")}. Si l'une d'elles est celle que vous avez téléchargée, dites-moi son nom et je l'ajouterai.`;
       unknownNote.style.display = "";
     }
-  })();
+    countNote.textContent = `${homme.length + femme.length + inconnu.length} voix française(s) détectée(s) au total sur cet appareil.`;
+  }
+  await populateHuggyVoices(false);
+
+  container.querySelector("#huggy-refresh-btn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "🔄 Recherche en cours…";
+    await populateHuggyVoices(true);
+    btn.disabled = false;
+    btn.textContent = "🔄 Rafraîchir la liste des voix";
+  });
 
   container.querySelectorAll("[data-preview]").forEach((btn) => {
     btn.addEventListener("click", () => {

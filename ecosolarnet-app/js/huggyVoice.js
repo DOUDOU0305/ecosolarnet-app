@@ -2,6 +2,27 @@ import { getSettings } from "./db.js";
 
 let voicesPromise = null;
 
+function pollForVoices(resolve) {
+  const existing = window.speechSynthesis.getVoices();
+  if (existing.length > 0) {
+    resolve(existing);
+    return;
+  }
+  // Sur iPhone, la liste des voix (surtout les voix "Améliorées"/"Premium"
+  // fraîchement téléchargées) peut mettre plusieurs secondes à être disponible
+  // pour la page. On réessaie régulièrement au lieu d'abandonner après 1 essai.
+  let attempts = 0;
+  const maxAttempts = 20; // ~10 secondes
+  const interval = setInterval(() => {
+    attempts++;
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0 || attempts >= maxAttempts) {
+      clearInterval(interval);
+      resolve(voices);
+    }
+  }, 500);
+}
+
 export function loadVoices() {
   if (!("speechSynthesis" in window)) return Promise.resolve([]);
   if (voicesPromise) return voicesPromise;
@@ -14,10 +35,16 @@ export function loadVoices() {
     window.speechSynthesis.onvoiceschanged = () => {
       resolve(window.speechSynthesis.getVoices());
     };
-    // Filet de sécurité : certains navigateurs ne déclenchent jamais l'événement.
-    setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1000);
+    pollForVoices(resolve);
   });
   return voicesPromise;
+}
+
+// Force un nouveau chargement (bouton "Rafraîchir" côté réglages), utile si les
+// voix n'étaient pas encore prêtes au premier chargement de la page.
+export function forceReloadVoices() {
+  voicesPromise = null;
+  return loadVoices();
 }
 
 export async function getFrenchVoices() {
