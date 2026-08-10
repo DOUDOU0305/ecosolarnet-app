@@ -1,7 +1,7 @@
 import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { speak } from "../huggyVoice.js";
-import { geocodeAddress, fullAddress } from "../geo.js";
+import { geocodeAddress, fullAddress, computeRouteKm } from "../geo.js";
 
 let log = [];
 let busy = false;
@@ -62,15 +62,6 @@ async function scheduleClientOnDate(client, dateStr, startMinutes, durationMinut
     clientNames.push(client.name);
   }
 
-  const saved = await Store.put("tournees", {
-    id: tournee?.id,
-    name: `Jour du ${dateStr}`,
-    clientIds,
-    clientNames,
-    km: null,
-  });
-
-  await Store.put("planningEntries", { id: currentEntry?.id, date: dateStr, tourneeId: saved.id, label: saved.name });
   await Store.put("visitTimes", {
     id: `${dateStr}_${client.id}`,
     date: dateStr,
@@ -79,6 +70,32 @@ async function scheduleClientOnDate(client, dateStr, startMinutes, durationMinut
     startMinutes,
     durationMinutes,
   });
+
+  const [settings, allClients, allTimes] = await Promise.all([
+    getSettings(),
+    Store.getAll("clients"),
+    Store.getAll("visitTimes"),
+  ]);
+  const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
+  const timesForDay = new Map(allTimes.filter((v) => v.date === dateStr).map((v) => [v.clientId, v]));
+  const ordered = clientIds
+    .map((id) => {
+      const c = allClients.find((cl) => cl.id === id);
+      if (!c) return null;
+      return { lat: c.lat, lng: c.lng, startMinutes: timesForDay.get(id)?.startMinutes ?? 0 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.startMinutes - b.startMinutes);
+
+  const saved = await Store.put("tournees", {
+    id: tournee?.id,
+    name: `Jour du ${dateStr}`,
+    clientIds,
+    clientNames,
+    km: computeRouteKm(ordered, base),
+  });
+
+  await Store.put("planningEntries", { id: currentEntry?.id, date: dateStr, tourneeId: saved.id, label: saved.name });
 }
 
 async function handleSend(container) {

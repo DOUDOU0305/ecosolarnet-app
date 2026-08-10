@@ -1,9 +1,103 @@
 import { Store, getSettings } from "../db.js";
-import { haversineKm, postalCodeRoughDistance } from "../geo.js";
+import { haversineKm, postalCodeRoughDistance, computeRouteKm } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { renderYear, renderMonth, renderDay } from "./calendar.js";
 
 let lastOptions = null; // options de tournées générées (non encore enregistrées)
+
+const SWIPE_OPEN_X = -84;
+let openSwipeRow = null;
+
+function closeSwipeRow(row) {
+  if (!row) return;
+  const content = row.querySelector(".swipe-content");
+  if (content) content.style.transform = "translateX(0)";
+  row.classList.remove("swipe-open");
+  if (openSwipeRow === row) openSwipeRow = null;
+}
+
+function wireSwipeRows(container, onDelete) {
+  container.querySelectorAll(".swipe-row").forEach((row) => {
+    const content = row.querySelector(".swipe-content");
+    const deleteBtn = row.querySelector(".swipe-delete-btn");
+    let startX = 0;
+    let startY = 0;
+    let baseX = 0;
+    let dragging = false;
+    let axis = null;
+
+    content.addEventListener("pointerdown", (e) => {
+      if (openSwipeRow && openSwipeRow !== row) closeSwipeRow(openSwipeRow);
+      startX = e.clientX;
+      startY = e.clientY;
+      baseX = row.classList.contains("swipe-open") ? SWIPE_OPEN_X : 0;
+      dragging = true;
+      axis = null;
+      content.style.transition = "none";
+      content.setPointerCapture(e.pointerId);
+    });
+
+    content.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (axis === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (axis !== "x") return;
+      const x = Math.min(0, Math.max(SWIPE_OPEN_X, baseX + dx));
+      content.style.transform = `translateX(${x}px)`;
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      content.style.transition = "";
+      if (axis !== "x") return;
+      const dx = e.clientX - startX;
+      const finalX = baseX + dx;
+      if (finalX < SWIPE_OPEN_X / 2) {
+        content.style.transform = `translateX(${SWIPE_OPEN_X}px)`;
+        row.classList.add("swipe-open");
+        openSwipeRow = row;
+      } else {
+        closeSwipeRow(row);
+      }
+    }
+
+    content.addEventListener("pointerup", endDrag);
+    content.addEventListener("pointercancel", endDrag);
+
+    content.addEventListener("click", (e) => {
+      if (row.classList.contains("swipe-open")) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSwipeRow(row);
+      }
+    });
+
+    deleteBtn.addEventListener("click", () => onDelete(row.dataset.id));
+  });
+}
+
+function formatTourneeName(name) {
+  const m = /^Jour du (\d{4})-(\d{2})-(\d{2})$/.exec(name || "");
+  if (!m) return name;
+  return `Jour du ${m[3]}/${m[2]}/${m[1]}`;
+}
+
+async function deleteTournee(id) {
+  const tournee = await Store.get("tournees", id);
+  await Store.delete("tournees", id);
+  const dateMatch = /^Jour du (\d{4}-\d{2}-\d{2})$/.exec(tournee?.name || "");
+  if (dateMatch) {
+    const dateStr = dateMatch[1];
+    const [entries, times] = await Promise.all([Store.getAll("planningEntries"), Store.getAll("visitTimes")]);
+    const entry = entries.find((p) => p.date === dateStr);
+    if (entry) await Store.delete("planningEntries", entry.id);
+    for (const t of times.filter((t) => t.date === dateStr)) await Store.delete("visitTimes", t.id);
+  }
+}
 
 export async function render(container, params) {
   const id = params?.id;
@@ -15,11 +109,37 @@ export async function render(container, params) {
   return renderMain(container);
 }
 
+async function backfillMissingKm(savedTournees, settings) {
+  const missing = savedTournees.filter((t) => t.km == null && t.clientIds?.length > 0);
+  if (missing.length === 0) return;
+  const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
+  if (!base) return;
+  const [allClients, allTimes] = await Promise.all([Store.getAll("clients"), Store.getAll("visitTimes")]);
+  const clientById = new Map(allClients.map((c) => [c.id, c]));
+  for (const t of missing) {
+    const dateMatch = /^Jour du (\d{4}-\d{2}-\d{2})$/.exec(t.name || "");
+    const timesForDay = dateMatch
+      ? new Map(allTimes.filter((v) => v.date === dateMatch[1]).map((v) => [v.clientId, v]))
+      : null;
+    const ordered = t.clientIds
+      .map((id) => {
+        const c = clientById.get(id);
+        if (!c) return null;
+        return { lat: c.lat, lng: c.lng, startMinutes: timesForDay?.get(id)?.startMinutes ?? 0 };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.startMinutes - b.startMinutes);
+    const km = computeRouteKm(ordered, base);
+    if (km != null) {
+      t.km = km;
+      await Store.put("tournees", t);
+    }
+  }
+}
+
 async function renderMain(container) {
   const settings = await getSettings();
   const clients = await Store.getAll("clients");
-  const savedTournees = await Store.getAll("tournees");
-  savedTournees.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   container.innerHTML = `
     <h1>Tournées & Planning</h1>
@@ -31,10 +151,7 @@ async function renderMain(container) {
       <div id="options-zone"></div>
     </div>
 
-    <div class="card" id="saved-tournees-zone">
-      <h3 style="margin-top:0">Mes tournées enregistrées</h3>
-      ${savedTournees.length === 0 ? `<p class="muted">Aucune tournée enregistrée pour le moment. Générez-en une ci-dessus.</p>` : renderSavedTournees(savedTournees)}
-    </div>
+    <div class="card" id="saved-tournees-zone"></div>
 
     <div class="card">
       <h3 style="margin-top:0">Calendrier</h3>
@@ -42,6 +159,8 @@ async function renderMain(container) {
       <button class="btn block" id="open-calendar-btn">📅 Voir le calendrier</button>
     </div>
   `;
+
+  await refreshSavedTourneesZone(container, settings);
 
   container.querySelector("#generate-btn")?.addEventListener("click", async () => {
     await handleGenerate(container, clients, settings);
@@ -52,14 +171,38 @@ async function renderMain(container) {
   });
 }
 
+async function refreshSavedTourneesZone(container, settings) {
+  const savedTournees = await Store.getAll("tournees");
+  savedTournees.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  await backfillMissingKm(savedTournees, settings);
+
+  const zone = container.querySelector("#saved-tournees-zone");
+  zone.innerHTML = `
+    <h3 style="margin-top:0">Mes tournées enregistrées</h3>
+    ${savedTournees.length === 0
+      ? `<p class="muted">Aucune tournée enregistrée pour le moment. Générez-en une ci-dessus.</p>`
+      : `<p class="muted" style="font-size:12px">Glissez une ligne vers la gauche pour la supprimer.</p>${renderSavedTournees(savedTournees)}`}
+  `;
+
+  openSwipeRow = null;
+  wireSwipeRows(zone, async (id) => {
+    await deleteTournee(id);
+    showToast("Tournée supprimée");
+    await refreshSavedTourneesZone(container, settings);
+  });
+}
+
 function renderSavedTournees(savedTournees) {
-  return savedTournees.map((t, i) => `
-    <div class="tour-option">
-      <div class="card-row">
-        <strong>${escapeHtml(t.name)}</strong>
-        <span class="pill">${t.km != null ? Math.round(t.km) + " km" : "km inconnu"}</span>
+  return savedTournees.map((t) => `
+    <div class="swipe-row" data-id="${t.id}">
+      <button type="button" class="swipe-delete-btn">Supprimer</button>
+      <div class="swipe-content tour-option">
+        <div class="card-row">
+          <strong>${escapeHtml(formatTourneeName(t.name))}</strong>
+          <span class="pill">${t.km != null ? Math.round(t.km) + " km" : "km inconnu"}</span>
+        </div>
+        <p class="muted" style="margin:6px 0 0">${t.clientNames.join(", ")}</p>
       </div>
-      <p class="muted" style="margin:6px 0 0">${t.clientNames.join(", ")}</p>
     </div>
   `).join("");
 }
@@ -89,11 +232,7 @@ async function handleGenerate(container, clients, settings) {
       const key = btn.dataset.choose;
       await saveTournees(lastOptions[key].tours);
       showToast("Tournées enregistrées");
-      const savedTournees = await Store.getAll("tournees");
-      container.querySelector("#saved-tournees-zone").innerHTML = `
-        <h3 style="margin-top:0">Mes tournées enregistrées</h3>
-        ${renderSavedTournees(savedTournees)}
-      `;
+      await refreshSavedTourneesZone(container, settings);
       zone.innerHTML = "";
     });
   });

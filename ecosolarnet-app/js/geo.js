@@ -74,6 +74,26 @@ export function fullAddress(entity) {
   return `${entity.address}, ${entity.postalCode} ${entity.city}, Belgique`;
 }
 
+// Distance totale d'une tournée : domicile -> clients (dans l'ordre donné) -> domicile.
+// Ignore les clients sans coordonnées ; retourne null si le domicile ou aucun client n'est géolocalisé.
+export function computeRouteKm(orderedClients, base) {
+  if (!base || base.lat == null) return null;
+  const withCoords = orderedClients.filter((c) => c.lat != null);
+  if (withCoords.length === 0) return null;
+  let km = 0;
+  let current = base;
+  for (const c of withCoords) {
+    const d = haversineKm(current, { lat: c.lat, lng: c.lng });
+    if (d == null) return null;
+    km += d;
+    current = { lat: c.lat, lng: c.lng };
+  }
+  const back = haversineKm(current, base);
+  if (back == null) return null;
+  km += back;
+  return km;
+}
+
 export function wazeUrl(c) {
   if (c.lat != null && c.lng != null) {
     return `https://waze.com/ul?ll=${c.lat}%2C${c.lng}&navigate=yes`;

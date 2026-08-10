@@ -1,6 +1,6 @@
 import { Store, getSettings } from "../db.js";
 import { showToast, escapeHtml } from "../toast.js";
-import { wazeUrl } from "../geo.js";
+import { wazeUrl, computeRouteKm } from "../geo.js";
 import { monthLabel } from "../scheduling.js";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -746,12 +746,14 @@ export async function renderDay(container, dateStr) {
     const current = currentEntries.find((p) => p.date === dateStr);
 
     if (dayClients.length > 0) {
+      const base = settings.baseLat != null ? { lat: settings.baseLat, lng: settings.baseLng } : null;
+      const ordered = [...dayClients].sort((a, b) => a.startMinutes - b.startMinutes);
       const tournee = await Store.put("tournees", {
         id: dayTourneeId || undefined,
         name: `Jour du ${dateStr}`,
         clientIds: dayClients.map((c) => c.id),
         clientNames: dayClients.map((c) => c.name),
-        km: null,
+        km: computeRouteKm(ordered, base),
       });
       dayTourneeId = tournee.id;
       await Store.put("planningEntries", { id: current?.id, date: dateStr, tourneeId: tournee.id, label: tournee.name });
