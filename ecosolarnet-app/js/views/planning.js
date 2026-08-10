@@ -5,8 +5,13 @@ import { renderYear, renderMonth, renderDay } from "./calendar.js";
 
 let lastOptions = null; // options de tournées générées (non encore enregistrées)
 
-const SWIPE_OPEN_X = -84;
+const SWIPE_OPEN_X = -172;
 let openSwipeRow = null;
+const MAX_VISIBLE_TOURNEES = 7;
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function closeSwipeRow(row) {
   if (!row) return;
@@ -19,7 +24,7 @@ function closeSwipeRow(row) {
 function wireSwipeRows(container, onDelete) {
   container.querySelectorAll(".swipe-row").forEach((row) => {
     const content = row.querySelector(".swipe-content");
-    const deleteBtn = row.querySelector(".swipe-delete-btn");
+    const deleteBtns = row.querySelectorAll(".swipe-delete-btn");
     let startX = 0;
     let startY = 0;
     let baseX = 0;
@@ -76,7 +81,9 @@ function wireSwipeRows(container, onDelete) {
       }
     });
 
-    deleteBtn.addEventListener("click", () => onDelete(row.dataset.id));
+    deleteBtns.forEach((btn) => {
+      btn.addEventListener("click", () => onDelete(row.dataset.id, btn.dataset.action));
+    });
   });
 }
 
@@ -86,9 +93,10 @@ function formatTourneeName(name) {
   return `Jour du ${m[3]}/${m[2]}/${m[1]}`;
 }
 
-async function deleteTournee(id) {
+async function deleteTournee(id, action) {
   const tournee = await Store.get("tournees", id);
   await Store.delete("tournees", id);
+  if (action !== "all") return;
   const dateMatch = /^Jour du (\d{4}-\d{2}-\d{2})$/.exec(tournee?.name || "");
   if (dateMatch) {
     const dateStr = dateMatch[1];
@@ -177,23 +185,32 @@ function tourneeSortKey(t) {
   return `zzzz-${String(t.order ?? 0).padStart(6, "0")}`;
 }
 
+function isPastTournee(t) {
+  const m = /^Jour du (\d{4}-\d{2}-\d{2})$/.exec(t.name || "");
+  return m ? m[1] < todayStr() : false;
+}
+
 async function refreshSavedTourneesZone(container, settings) {
-  const savedTournees = await Store.getAll("tournees");
-  savedTournees.sort((a, b) => tourneeSortKey(a).localeCompare(tourneeSortKey(b)));
-  await backfillMissingKm(savedTournees, settings);
+  const allTournees = await Store.getAll("tournees");
+  await backfillMissingKm(allTournees, settings);
+
+  const visibleTournees = allTournees
+    .filter((t) => !isPastTournee(t))
+    .sort((a, b) => tourneeSortKey(a).localeCompare(tourneeSortKey(b)))
+    .slice(0, MAX_VISIBLE_TOURNEES);
 
   const zone = container.querySelector("#saved-tournees-zone");
   zone.innerHTML = `
     <h3 style="margin-top:0">Mes tournées enregistrées</h3>
-    ${savedTournees.length === 0
-      ? `<p class="muted">Aucune tournée enregistrée pour le moment. Générez-en une ci-dessus.</p>`
-      : `<p class="muted" style="font-size:12px">Glissez une ligne vers la gauche pour la supprimer.</p>${renderSavedTournees(savedTournees)}`}
+    ${visibleTournees.length === 0
+      ? `<p class="muted">Aucune tournée à venir pour le moment. Générez-en une ci-dessus.</p>`
+      : `<p class="muted" style="font-size:12px">Les tournées passées disparaissent automatiquement (max ${MAX_VISIBLE_TOURNEES} affichées). Glissez une ligne vers la gauche pour la supprimer.</p>${renderSavedTournees(visibleTournees)}`}
   `;
 
   openSwipeRow = null;
-  wireSwipeRows(zone, async (id) => {
-    await deleteTournee(id);
-    showToast("Tournée supprimée");
+  wireSwipeRows(zone, async (id, action) => {
+    await deleteTournee(id, action);
+    showToast(action === "all" ? "Tournée supprimée (ligne + calendrier)" : "Ligne supprimée, le rendez-vous reste au calendrier");
     await refreshSavedTourneesZone(container, settings);
   });
 }
@@ -201,7 +218,10 @@ async function refreshSavedTourneesZone(container, settings) {
 function renderSavedTournees(savedTournees) {
   return savedTournees.map((t) => `
     <div class="swipe-row" style="border-radius:var(--radius-lg);margin-bottom:10px" data-id="${t.id}">
-      <button type="button" class="swipe-delete-btn">Supprimer</button>
+      <div style="position:absolute;top:0;right:0;bottom:0;display:flex">
+        <button type="button" class="swipe-delete-btn" data-action="row" style="position:static;width:86px;background:var(--fill);color:var(--text);font-size:12px;line-height:1.25;padding:6px;display:flex;align-items:center;justify-content:center;text-align:center">Ligne seule</button>
+        <button type="button" class="swipe-delete-btn" data-action="all" style="position:static;width:86px;background:var(--danger);font-size:12px;line-height:1.25;padding:6px;display:flex;align-items:center;justify-content:center;text-align:center">Ligne + calendrier</button>
+      </div>
       <div class="swipe-content" style="border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:14px">
         <div class="card-row">
           <strong>${escapeHtml(formatTourneeName(t.name))}</strong>
