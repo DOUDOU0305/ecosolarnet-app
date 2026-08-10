@@ -171,9 +171,15 @@ async function renderMain(container) {
   });
 }
 
+function tourneeSortKey(t) {
+  const m = /^Jour du (\d{4}-\d{2}-\d{2})$/.exec(t.name || "");
+  if (m) return m[1];
+  return `zzzz-${String(t.order ?? 0).padStart(6, "0")}`;
+}
+
 async function refreshSavedTourneesZone(container, settings) {
   const savedTournees = await Store.getAll("tournees");
-  savedTournees.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  savedTournees.sort((a, b) => tourneeSortKey(a).localeCompare(tourneeSortKey(b)));
   await backfillMissingKm(savedTournees, settings);
 
   const zone = container.querySelector("#saved-tournees-zone");
@@ -194,9 +200,9 @@ async function refreshSavedTourneesZone(container, settings) {
 
 function renderSavedTournees(savedTournees) {
   return savedTournees.map((t) => `
-    <div class="swipe-row" data-id="${t.id}">
+    <div class="swipe-row" style="border-radius:var(--radius-lg);margin-bottom:10px" data-id="${t.id}">
       <button type="button" class="swipe-delete-btn">Supprimer</button>
-      <div class="swipe-content tour-option">
+      <div class="swipe-content" style="border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:14px">
         <div class="card-row">
           <strong>${escapeHtml(formatTourneeName(t.name))}</strong>
           <span class="pill">${t.km != null ? Math.round(t.km) + " km" : "km inconnu"}</span>
