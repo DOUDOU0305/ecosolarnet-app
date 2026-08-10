@@ -59,6 +59,7 @@ export async function getMessage(token, id) {
     subject: getHeader("Subject"),
     from: getHeader("From"),
     to: getHeader("To"),
+    cc: getHeader("Cc"),
     messageIdHeader: getHeader("Message-ID"),
     date: getHeader("Date"),
     snippet: data.snippet || "",

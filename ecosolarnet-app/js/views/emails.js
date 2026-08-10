@@ -317,6 +317,7 @@ async function classify(full, settings) {
     body: JSON.stringify({
       subject: full.subject,
       from: full.from,
+      cc: full.cc,
       body: full.body,
       companyName: settings.companyName,
     }),
