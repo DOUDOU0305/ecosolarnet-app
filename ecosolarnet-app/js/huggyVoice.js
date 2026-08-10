@@ -37,7 +37,7 @@ const MALE_NAMES = [
   "vincent",
 ];
 const FEMALE_NAMES = [
-  "amelie", "audrey", "aurelie", "chantal", "celine", "marie", "virginie", "lea",
+  "amelie", "aude", "audrey", "aurelie", "chantal", "celine", "marie", "virginie", "lea",
   "julie", "hortense", "charlotte", "elise", "manon", "camille", "claire",
   "emilie", "fanny", "isabelle", "juliette", "leonie", "margaux", "sophie",
   "sandrine", "florence", "helene", "nathalie", "sylvie", "valerie",
@@ -47,10 +47,14 @@ function stripAccents(str) {
   return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
+// On découpe sur tout ce qui n'est pas une lettre (espace, parenthèse, tiret,
+// point...) et on regarde si l'UN des mots obtenus est un prénom connu, plutôt
+// que de se fier uniquement au premier mot : les noms de voix varient beaucoup
+// selon la plateforme ("Thomas Premium", "Thomas (Amélioré)", "Amélioré - Thomas"...).
 export function classifyVoiceGender(voiceName) {
-  const firstWord = stripAccents(String(voiceName || "").toLowerCase()).split(/[\s(]/)[0];
-  if (MALE_NAMES.includes(firstWord)) return "homme";
-  if (FEMALE_NAMES.includes(firstWord)) return "femme";
+  const words = stripAccents(String(voiceName || "").toLowerCase()).split(/[^a-z]+/).filter(Boolean);
+  if (words.some((w) => MALE_NAMES.includes(w))) return "homme";
+  if (words.some((w) => FEMALE_NAMES.includes(w))) return "femme";
   return null;
 }
 
