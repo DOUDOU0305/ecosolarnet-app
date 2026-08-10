@@ -4,7 +4,7 @@ import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
-import { getFrenchVoices, speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
+import { getFrenchVoicesByGender, speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -230,6 +230,7 @@ export async function render(container) {
           <input type="range" name="huggyVoicePitch" id="huggy-pitch-input" min="0.8" max="1.2" step="0.01" value="${s.huggyVoicePitch}">
         </div>
         <p class="muted" style="font-size:12px">Ces deux réglages s'appliquent de la même façon à la voix homme et à la voix femme.</p>
+        <p class="muted" id="huggy-unknown-note" style="font-size:12px;display:none;margin-top:8px"></p>
       </div>
 
       <div class="card">
@@ -280,20 +281,28 @@ export async function render(container) {
   await refreshQrPreview(s.googleReviewUrl);
 
   (async () => {
-    const voices = await getFrenchVoices();
+    const { homme, femme, inconnu } = await getFrenchVoicesByGender();
     const homeSelect = container.querySelector("#huggy-voice-homme");
     const femmeSelect = container.querySelector("#huggy-voice-femme");
-    if (voices.length === 0) {
-      const msg = `<option value="">Aucune voix française trouvée sur cet appareil</option>`;
-      homeSelect.innerHTML = msg;
-      femmeSelect.innerHTML = msg;
-      return;
+    const unknownNote = container.querySelector("#huggy-unknown-note");
+
+    function fillSelect(select, voices) {
+      if (voices.length === 0) {
+        select.innerHTML = `<option value="">Aucune voix trouvée sur cet appareil</option>`;
+        return;
+      }
+      select.innerHTML = voices.map((v) => `<option value="${v.name}">${v.name}${v.localService ? "" : " (en ligne)"}</option>`).join("");
     }
-    const optionsHtml = voices.map((v) => `<option value="${v.name}">${v.name}${v.localService ? "" : " (en ligne)"}</option>`).join("");
-    homeSelect.innerHTML = optionsHtml;
-    femmeSelect.innerHTML = optionsHtml;
-    if (s.huggyVoiceNameHomme && voices.some((v) => v.name === s.huggyVoiceNameHomme)) homeSelect.value = s.huggyVoiceNameHomme;
-    if (s.huggyVoiceNameFemme && voices.some((v) => v.name === s.huggyVoiceNameFemme)) femmeSelect.value = s.huggyVoiceNameFemme;
+
+    fillSelect(homeSelect, homme);
+    fillSelect(femmeSelect, femme);
+    if (s.huggyVoiceNameHomme && homme.some((v) => v.name === s.huggyVoiceNameHomme)) homeSelect.value = s.huggyVoiceNameHomme;
+    if (s.huggyVoiceNameFemme && femme.some((v) => v.name === s.huggyVoiceNameFemme)) femmeSelect.value = s.huggyVoiceNameFemme;
+
+    if (inconnu.length > 0) {
+      unknownNote.textContent = `ℹ️ ${inconnu.length} voix non classée(s) automatiquement, donc masquée(s) ici : ${inconnu.map((v) => v.name).join(", ")}. Si l'une d'elles est celle que vous avez téléchargée, dites-moi son nom et je l'ajouterai.`;
+      unknownNote.style.display = "";
+    }
   })();
 
   container.querySelectorAll("[data-preview]").forEach((btn) => {

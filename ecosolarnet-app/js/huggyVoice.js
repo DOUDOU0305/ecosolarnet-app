@@ -25,6 +25,44 @@ export async function getFrenchVoices() {
   return voices.filter((v) => (v.lang || "").toLowerCase().startsWith("fr"));
 }
 
+// Le Web Speech API ne fournit pas le genre d'une voix : on le déduit du prénom
+// dans son nom, à partir des voix françaises connues sur iPhone/Mac, Windows et
+// Chrome/Android. Si une voix n'est reconnue dans aucune des deux listes, elle
+// n'apparaît dans ni l'une ni l'autre (mieux vaut la signaler pour l'ajouter que
+// de risquer de la classer dans le mauvais genre).
+const MALE_NAMES = [
+  "thomas", "daniel", "jacques", "nicolas", "bruno", "julien", "antoine", "xavier",
+  "paul", "henri", "louis", "marc", "pierre", "david", "denys", "fabrice",
+  "guillaume", "mathieu", "maxime", "olivier", "philippe", "yannick", "alain",
+  "vincent",
+];
+const FEMALE_NAMES = [
+  "amelie", "audrey", "aurelie", "chantal", "celine", "marie", "virginie", "lea",
+  "julie", "hortense", "charlotte", "elise", "manon", "camille", "claire",
+  "emilie", "fanny", "isabelle", "juliette", "leonie", "margaux", "sophie",
+  "sandrine", "florence", "helene", "nathalie", "sylvie", "valerie",
+];
+
+function stripAccents(str) {
+  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+export function classifyVoiceGender(voiceName) {
+  const firstWord = stripAccents(String(voiceName || "").toLowerCase()).split(/[\s(]/)[0];
+  if (MALE_NAMES.includes(firstWord)) return "homme";
+  if (FEMALE_NAMES.includes(firstWord)) return "femme";
+  return null;
+}
+
+export async function getFrenchVoicesByGender() {
+  const voices = await getFrenchVoices();
+  return {
+    homme: voices.filter((v) => classifyVoiceGender(v.name) === "homme"),
+    femme: voices.filter((v) => classifyVoiceGender(v.name) === "femme"),
+    inconnu: voices.filter((v) => classifyVoiceGender(v.name) === null),
+  };
+}
+
 // Copie en mémoire des réglages de voix, tenue à jour par refreshVoiceSettingsCache().
 // speak() doit rester 100% synchrone jusqu'à l'appel à speechSynthesis.speak() :
 // Safari sur iOS bloque silencieusement la voix si le moindre "await" s'intercale
