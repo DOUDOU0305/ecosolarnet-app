@@ -11,6 +11,7 @@ import { getSettings } from "./db.js";
 import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
+import { refreshVoiceSettingsCache } from "./huggyVoice.js";
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();
@@ -144,6 +145,8 @@ getSettings().then((s) => {
   if (s.autoTimerEnabled) startAutoWatch();
   if (s.departureRemindersEnabled) startDepartureReminders();
 });
+
+refreshVoiceSettingsCache();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

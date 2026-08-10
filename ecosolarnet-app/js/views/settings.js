@@ -4,7 +4,7 @@ import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
-import { getFrenchVoices, speak } from "../huggyVoice.js";
+import { getFrenchVoices, speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -409,6 +409,7 @@ export async function render(container) {
     patch.windowSurcharges = windowSurcharges;
 
     const saved = await saveSettings(patch);
+    await refreshVoiceSettingsCache();
     showToast("Réglages enregistrés");
 
     const status = container.querySelector("#geo-status");
