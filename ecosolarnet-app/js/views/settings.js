@@ -4,7 +4,7 @@ import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
-import { getFrenchVoicesByGender, speak, refreshVoiceSettingsCache, forceReloadVoices } from "../huggyVoice.js";
+import { speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -195,7 +195,7 @@ export async function render(container) {
 
       <div class="card">
         <h3 style="margin-top:0">Voix de Huggy</h3>
-        <p class="muted">Choisissez la voix qui vous parle dans l'application (assistant vocal, résumé du jour...). La qualité dépend des voix installées sur votre iPhone : pour une voix vraiment naturelle, allez dans <strong>Réglages iPhone → Accessibilité → Contenu énoncé → Voix → Français</strong> et téléchargez une voix "Améliorée" ou "Premium" (les voix par défaut sont plus robotiques).</p>
+        <p class="muted">Choisissez si Huggy vous parle avec une voix homme ou femme, et réglez la vitesse et la tonalité pour un ton plus posé. Sur iPhone, Safari ne permet malheureusement pas d'utiliser les voix "Premium" téléchargées dans les réglages du téléphone — seules les voix standard sont disponibles ici.</p>
 
         <div class="field">
           <label>Voix utilisée</label>
@@ -206,22 +206,6 @@ export async function render(container) {
         </div>
 
         <div class="field">
-          <label>Voix homme</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select name="huggyVoiceNameHomme" id="huggy-voice-homme" style="flex:1"></select>
-            <button type="button" class="btn secondary small" data-preview="homme">🔊 Tester</button>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Voix femme</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select name="huggyVoiceNameFemme" id="huggy-voice-femme" style="flex:1"></select>
-            <button type="button" class="btn secondary small" data-preview="femme">🔊 Tester</button>
-          </div>
-        </div>
-
-        <div class="field">
           <label>Vitesse (plus lent = plus posé et rassurant)</label>
           <input type="range" name="huggyVoiceRate" id="huggy-rate-input" min="0.7" max="1.15" step="0.01" value="${s.huggyVoiceRate}">
         </div>
@@ -229,10 +213,7 @@ export async function render(container) {
           <label>Tonalité (plus grave = plus mature)</label>
           <input type="range" name="huggyVoicePitch" id="huggy-pitch-input" min="0.8" max="1.2" step="0.01" value="${s.huggyVoicePitch}">
         </div>
-        <p class="muted" style="font-size:12px">Ces deux réglages s'appliquent de la même façon à la voix homme et à la voix femme.</p>
-        <p class="muted" id="huggy-unknown-note" style="font-size:12px;display:none;margin-top:8px"></p>
-        <p class="muted" id="huggy-voice-count" style="font-size:12px;margin-top:8px"></p>
-        <button type="button" class="btn secondary small" id="huggy-refresh-btn" style="margin-top:6px">🔄 Rafraîchir la liste des voix</button>
+        <button type="button" class="btn secondary block" id="huggy-test-btn" style="margin-top:6px">🔊 Tester la voix</button>
       </div>
 
       <div class="card">
@@ -282,55 +263,11 @@ export async function render(container) {
   }
   await refreshQrPreview(s.googleReviewUrl);
 
-  async function populateHuggyVoices(forceReload) {
-    if (forceReload) await forceReloadVoices();
-    const { homme, femme, inconnu } = await getFrenchVoicesByGender();
-    const homeSelect = container.querySelector("#huggy-voice-homme");
-    const femmeSelect = container.querySelector("#huggy-voice-femme");
-    const unknownNote = container.querySelector("#huggy-unknown-note");
-    const countNote = container.querySelector("#huggy-voice-count");
-
-    function fillSelect(select, voices, previousValue) {
-      if (voices.length === 0) {
-        select.innerHTML = `<option value="">Aucune voix trouvée sur cet appareil</option>`;
-        return;
-      }
-      select.innerHTML = voices.map((v) => `<option value="${v.name}">${v.name}${v.localService ? "" : " (en ligne)"}</option>`).join("");
-      if (previousValue && voices.some((v) => v.name === previousValue)) select.value = previousValue;
-    }
-
-    fillSelect(homeSelect, homme, homeSelect.value || s.huggyVoiceNameHomme);
-    fillSelect(femmeSelect, femme, femmeSelect.value || s.huggyVoiceNameFemme);
-
-    unknownNote.style.display = "none";
-    if (inconnu.length > 0) {
-      unknownNote.textContent = `ℹ️ ${inconnu.length} voix non classée(s) automatiquement, donc masquée(s) ici : ${inconnu.map((v) => v.name).join(", ")}. Si l'une d'elles est celle que vous avez téléchargée, dites-moi son nom et je l'ajouterai.`;
-      unknownNote.style.display = "";
-    }
-    countNote.textContent = `${homme.length + femme.length + inconnu.length} voix française(s) détectée(s) au total sur cet appareil.`;
-  }
-  await populateHuggyVoices(false);
-
-  container.querySelector("#huggy-refresh-btn").addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = "🔄 Recherche en cours…";
-    await populateHuggyVoices(true);
-    btn.disabled = false;
-    btn.textContent = "🔄 Rafraîchir la liste des voix";
-  });
-
-  container.querySelectorAll("[data-preview]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const gender = btn.dataset.preview;
-      const voiceName = gender === "femme"
-        ? container.querySelector("#huggy-voice-femme").value
-        : container.querySelector("#huggy-voice-homme").value;
-      speak("Bonjour, je suis Huggy. Voici un exemple de ma voix.", {
-        voiceName,
-        rate: parseFloat(container.querySelector("#huggy-rate-input").value),
-        pitch: parseFloat(container.querySelector("#huggy-pitch-input").value),
-      });
+  container.querySelector("#huggy-test-btn").addEventListener("click", () => {
+    speak("Bonjour, je suis Huggy. Voici un exemple de ma voix.", {
+      gender: container.querySelector("#huggy-gender-select").value,
+      rate: parseFloat(container.querySelector("#huggy-rate-input").value),
+      pitch: parseFloat(container.querySelector("#huggy-pitch-input").value),
     });
   });
 

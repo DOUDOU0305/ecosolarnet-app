@@ -26,6 +26,14 @@ function fmtHM(minutes) {
   return `${pad2(h)}:${pad2(m)}`;
 }
 
+// Format affiché à l'utilisateur (09H30) — différent de fmtHM() qui reste au
+// format HH:MM exigé par les <input type="time"> natifs.
+function fmtHMDisplay(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${pad2(h)}H${pad2(m)}`;
+}
+
 function parseHM(str) {
   const [h, m] = str.split(":").map(Number);
   return h * 60 + m;
@@ -334,7 +342,7 @@ export async function renderDay(container, dateStr) {
       return `
         <div class="appt-block" data-idx="${i}" style="position:absolute;top:${top}px;left:calc(${leftPct}% + ${col > 0 ? gap : 0}px);width:calc(${widthPct}% - ${gap}px);height:${height}px;background:var(--teal);color:white;border-radius:8px;padding:4px 8px;font-size:12px;overflow:hidden;touch-action:none;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.15)">
           <strong style="display:block;line-height:1.2">${escapeHtml(c.name)}</strong>
-          <span style="opacity:0.85">${fmtHM(c.startMinutes)} – ${fmtHM(c.startMinutes + c.durationMinutes)}</span>
+          <span style="opacity:0.85">${fmtHMDisplay(c.startMinutes)} – ${fmtHMDisplay(c.startMinutes + c.durationMinutes)}</span>
         </div>
       `;
     }).join("");
@@ -383,7 +391,7 @@ export async function renderDay(container, dateStr) {
       pendingStart = newStart;
       block.style.top = `${(newStart - DAY_START) * PX_PER_MIN}px`;
       const label = block.querySelector("span");
-      if (label) label.textContent = `${fmtHM(newStart)} – ${fmtHM(newStart + duration)}`;
+      if (label) label.textContent = `${fmtHMDisplay(newStart)} – ${fmtHMDisplay(newStart + duration)}`;
     });
 
     block.addEventListener("pointerup", async (e) => {
@@ -596,7 +604,7 @@ export async function renderDay(container, dateStr) {
     editor.innerHTML = `
       <div class="card" style="background:var(--teal-light)">
         <strong>${escapeHtml(candidate.clientName)}</strong>
-        <p class="muted" style="margin:4px 0 0">Prévu le ${candidateDate.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })} à ${fmtHM(candidate.startMinutes)}</p>
+        <p class="muted" style="margin:4px 0 0">Prévu le ${candidateDate.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })} à ${fmtHMDisplay(candidate.startMinutes)}</p>
         <button type="button" class="btn block" style="margin-top:10px" id="confirm-advance-btn">Avancer à aujourd'hui</button>
         <button type="button" class="btn secondary block" style="margin-top:8px" id="back-btn-advance2">‹ Retour</button>
       </div>
