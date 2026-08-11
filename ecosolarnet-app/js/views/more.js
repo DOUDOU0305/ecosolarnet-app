@@ -2,6 +2,8 @@ const ITEMS = [
   { route: "waitlist", icon: "⏳", label: "Liste d'attente" },
   { route: "emails", icon: "✉️", label: "Emails" },
   { route: "assistant", icon: "🎙️", label: "Assistant" },
+  { route: "reminders", icon: "📝", label: "Rappels" },
+  { route: "ideas", icon: "💡", label: "Idées" },
   { route: "settings", icon: "⚙️", label: "Réglages" },
 ];
 

@@ -25,7 +25,7 @@ function paint(container) {
       ${log.length === 0 ? `
         <div class="empty-state">
           <div class="big">🎙️</div>
-          <p>Essayez : "Ajoute un client...", "Mets [nom] au planning le 14 août à 10h30", ou posez une question.</p>
+          <p>Essayez : "Ajoute un client...", "Mets [nom] au planning le 14 août à 10h30", "Fais-moi un rappel de...", "Je viens d'avoir une idée, prends note...", ou posez une question.</p>
         </div>
       ` : log.slice().reverse().map((entry) => `
         <div class="card" style="background:${entry.role === "user" ? "var(--fill)" : "var(--teal-light)"}">
@@ -147,6 +147,10 @@ async function handleSend(container) {
           })
           .catch(() => {});
       }
+    } else if (data.intent === "add_reminder" && data.reminderText) {
+      await Store.put("reminders", { text: data.reminderText, done: false, createdAt: Date.now() });
+    } else if (data.intent === "add_idea" && data.ideaText) {
+      await Store.put("ideas", { text: data.ideaText, createdAt: Date.now() });
     } else if (data.intent === "schedule_appointment" && data.appointment?.clientName && data.appointment?.date) {
       const spoken = data.appointment.clientName.toLowerCase();
       const matched = allClients.find((c) => c.name.toLowerCase() === spoken)

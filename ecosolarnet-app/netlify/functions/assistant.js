@@ -29,13 +29,15 @@ ${ownerName} te dicte une phrase (via la dictée vocale de son iPhone, donc le t
 ${clientListText}
   Si un nom correspond clairement (même approximativement, la dictée vocale déforme parfois les noms), renvoie exactement le nom tel qu'il apparaît dans la liste ci-dessus. Sinon renvoie le nom tel qu'il l'a prononcé.
   Convertis la date en format AAAA-MM-JJ (déduis l'année à partir d'aujourd'hui si elle n'est pas précisée, en choisissant la prochaine occurrence de cette date si elle semble déjà passée). Convertis l'heure en HH:MM (24h) si mentionnée, sinon laisse vide.
+- "add_reminder" : il veut qu'on lui rappelle de faire quelque chose (souvent introduit par "fais-moi un rappel", "rappelle-moi", "n'oublie pas que je dois"...). Résume la tâche clairement et brièvement dans "reminderText", à la première personne (ex : "Mettre les loques à laver et repréparer la camionnette en rentrant à la maison ce soir."). Garde toute précision temporelle ou de contexte mentionnée (ex : "en rentrant à la maison", "demain matin") dans le texte du rappel lui-même, car l'application n'envoie pas de notification automatique déclenchée par la géolocalisation ou l'heure — le rappel est juste noté dans une liste à consulter.
+- "add_idea" : il vient d'avoir une idée et veut la noter (souvent introduit par "je viens d'avoir une idée", "prends note", "note ça"...). Retranscris fidèlement l'idée dictée dans "ideaText", en corrigeant seulement les fautes de transcription évidentes, sans reformuler le fond.
 - "general_question" : toute autre question ou demande de conversation générale. Réponds-y directement et brièvement en français. Si la question nécessite une information en temps réel que tu n'as pas (météo actuelle, horaires d'ouverture réels, position géographique...), dis-le clairement plutôt que d'inventer une réponse.
 - "unclear" : tu ne comprends pas ce qui est demandé, ou il manque des informations essentielles (par exemple "schedule_appointment" sans nom de client identifiable). Dans ce cas, "reply" doit être une question de clarification courte.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
-{"intent": "add_client|schedule_appointment|general_question|unclear", "reply": "phrase courte à dire/afficher à Steve pour confirmer ou répondre", "client": {"name": "", "address": "", "postalCode": "", "city": "", "phone": ""}, "appointment": {"clientName": "", "date": "", "time": ""}}
+{"intent": "add_client|schedule_appointment|add_reminder|add_idea|general_question|unclear", "reply": "phrase courte à dire/afficher à Steve pour confirmer ou répondre", "client": {"name": "", "address": "", "postalCode": "", "city": "", "phone": ""}, "appointment": {"clientName": "", "date": "", "time": ""}, "reminderText": "", "ideaText": ""}
 
-Inclus "client" uniquement si intent="add_client", "appointment" uniquement si intent="schedule_appointment" (mets l'autre à null). Le "reply" doit toujours être rempli, à la première personne, comme si tu parlais directement à Steve (exemples : "C'est noté, j'ai ajouté Jean Dupont." ou "J'ai programmé Marie Dubois le 14 août à 10h30.").`;
+Inclus "client" uniquement si intent="add_client", "appointment" uniquement si intent="schedule_appointment", "reminderText" uniquement si intent="add_reminder", "ideaText" uniquement si intent="add_idea" (mets les autres champs à null). Le "reply" doit toujours être rempli, à la première personne, comme si tu parlais directement à Steve (exemples : "C'est noté, j'ai ajouté Jean Dupont." ou "J'ai programmé Marie Dubois le 14 août à 10h30." ou "Ok, c'est noté." ou "Idée enregistrée.").`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -69,7 +71,7 @@ Inclus "client" uniquement si intent="add_client", "appointment" uniquement si i
       parsed = { intent: "unclear", reply: "Je n'ai pas compris, pouvez-vous reformuler ?" };
     }
 
-    const validIntents = ["add_client", "schedule_appointment", "general_question", "unclear"];
+    const validIntents = ["add_client", "schedule_appointment", "add_reminder", "add_idea", "general_question", "unclear"];
     const intent = validIntents.includes(parsed.intent) ? parsed.intent : "unclear";
     const reply = typeof parsed.reply === "string" && parsed.reply ? parsed.reply : "Je n'ai pas compris, pouvez-vous reformuler ?";
 
@@ -80,6 +82,8 @@ Inclus "client" uniquement si intent="add_client", "appointment" uniquement si i
         reply,
         client: parsed.client || null,
         appointment: parsed.appointment || null,
+        reminderText: typeof parsed.reminderText === "string" ? parsed.reminderText : null,
+        ideaText: typeof parsed.ideaText === "string" ? parsed.ideaText : null,
       }),
     };
   } catch (err) {

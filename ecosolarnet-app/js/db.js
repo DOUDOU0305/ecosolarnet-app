@@ -1,6 +1,6 @@
 const DB_NAME = "ecosolarnet-db";
-const DB_VERSION = 6;
-const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences", "visits", "activeTimer", "visitTimes", "huggyNotified", "processedEmails"];
+const DB_VERSION = 7;
+const STORES = ["clients", "devis", "settings", "tournees", "planningEntries", "waitlist", "schedulingPreferences", "visits", "activeTimer", "visitTimes", "huggyNotified", "processedEmails", "reminders", "ideas"];
 
 let dbPromise = null;
 
