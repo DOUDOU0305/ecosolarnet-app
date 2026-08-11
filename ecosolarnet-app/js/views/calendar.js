@@ -39,6 +39,81 @@ function parseHM(str) {
   return h * 60 + m;
 }
 
+// Balayage horizontal (vue jour) : bascule sur le jour précédent/suivant.
+// Ignore les gestes qui démarrent sur un rendez-vous (.appt-block) pour ne pas
+// entrer en conflit avec le glisser-déposer d'horaire, ni sur un contrôle
+// interactif (bouton, champ...).
+function wireHorizontalSwipe(container, onSwipe) {
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  let axis = null;
+  const THRESHOLD = 60;
+
+  container.style.touchAction = "pan-y";
+
+  container.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".appt-block, button, a, input, select, textarea")) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    dragging = true;
+    axis = null;
+  });
+  container.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    }
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    if (axis !== "x") return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) >= THRESHOLD) onSwipe(dx < 0 ? 1 : -1);
+  }
+  container.addEventListener("pointerup", endDrag);
+  container.addEventListener("pointercancel", endDrag);
+}
+
+// Balayage vertical (vue mois, comme dans Calendrier d'Apple) : bascule sur le
+// mois précédent/suivant. Un tap normal sur un jour (peu de mouvement) continue
+// de fonctionner via son propre gestionnaire de clic.
+function wireVerticalSwipe(container, onSwipe) {
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  let axis = null;
+  const THRESHOLD = 60;
+
+  container.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, a, input, select, textarea")) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    dragging = true;
+    axis = null;
+  });
+  container.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    }
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    if (axis !== "y") return;
+    const dy = e.clientY - startY;
+    if (Math.abs(dy) >= THRESHOLD) onSwipe(dy < 0 ? 1 : -1);
+  }
+  container.addEventListener("pointerup", endDrag);
+  container.addEventListener("pointercancel", endDrag);
+}
+
 // --- Vue Année ---
 
 export async function renderYear(container, year) {
@@ -129,18 +204,28 @@ export async function renderMonth(container, monthStr) {
   container.querySelector("#back-to-year").addEventListener("click", () => {
     location.hash = `#/planning/year-${year}`;
   });
+  function adjacentMonth(delta) {
+    let y = year;
+    let m = month + delta;
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    return `${y}-${pad2(m)}`;
+  }
   container.querySelector("#prev-month").addEventListener("click", () => {
-    const prev = month === 1 ? `${year - 1}-12` : `${year}-${pad2(month - 1)}`;
-    location.hash = `#/planning/month-${prev}`;
+    location.hash = `#/planning/month-${adjacentMonth(-1)}`;
   });
   container.querySelector("#next-month").addEventListener("click", () => {
-    const next = month === 12 ? `${year + 1}-01` : `${year}-${pad2(month + 1)}`;
-    location.hash = `#/planning/month-${next}`;
+    location.hash = `#/planning/month-${adjacentMonth(1)}`;
   });
   container.querySelectorAll("[data-date]").forEach((btn) => {
     btn.addEventListener("click", () => {
       location.hash = `#/planning/day-${btn.dataset.date}`;
     });
+  });
+
+  // Balayage vers le haut = mois suivant, vers le bas = mois précédent (façon Apple Calendrier).
+  wireVerticalSwipe(container, (dir) => {
+    location.hash = `#/planning/month-${adjacentMonth(dir)}`;
   });
 }
 
@@ -279,6 +364,14 @@ export async function renderDay(container, dateStr) {
 
   container.querySelector("#back-to-month").addEventListener("click", () => {
     location.hash = `#/planning/month-${dateStr.slice(0, 7)}`;
+  });
+
+  // Balayage vers la gauche = jour suivant, vers la droite = jour précédent.
+  wireHorizontalSwipe(container, (dir) => {
+    const d = new Date(dateStr + "T12:00:00");
+    d.setDate(d.getDate() + dir);
+    const newDateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    location.hash = `#/planning/day-${newDateStr}`;
   });
 
   function renderDefenseNotice() {
