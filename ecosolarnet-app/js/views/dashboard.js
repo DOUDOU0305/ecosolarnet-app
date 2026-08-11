@@ -38,10 +38,10 @@ export async function render(container) {
   function appointmentsForDate(dateStr) {
     const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
     if (times.length > 0) {
-      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName, clientId: t.clientId }));
+      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName, clientId: t.clientId, client: clients.find((c) => c.id === t.clientId) || null }));
     }
     const entry = entries.find((e) => e.date === dateStr);
-    return entry ? [{ time: "", name: entry.label, clientId: null }] : [];
+    return entry ? [{ time: "", name: entry.label, clientId: null, client: null }] : [];
   }
 
   const todayAppts = appointmentsForDate(todayStr);
@@ -62,6 +62,7 @@ export async function render(container) {
         <div class="list-item">
           <span class="muted" style="min-width:48px">${escapeHtml(a.time)}</span>
           <strong style="flex:1;margin-left:6px">${escapeHtml(a.name)}</strong>
+          ${a.client ? `<a href="${wazeUrl(a.client)}" style="text-decoration:none;font-size:19px;padding:4px 2px;line-height:1">🚗</a>` : ""}
           ${a.clientId ? `<button type="button" class="today-timer-btn" data-client-id="${a.clientId}" data-client-name="${escapeHtml(a.name)}" style="background:none;border:none;font-size:19px;padding:4px 2px;line-height:1;font-family:inherit">⏱️</button>` : ""}
         </div>
       `).join("")}
