@@ -39,11 +39,40 @@ function parseHM(str) {
   return h * 60 + m;
 }
 
+// renderDay()/renderMonth() sont appelées à répétition sur le même élément
+// #view persistant (l'appli ne recrée pas ce noeud à chaque navigation). Sans
+// nettoyage, chaque visite empilerait un nouveau jeu d'écouteurs de balayage
+// par-dessus les précédents (y compris ceux d'une autre vue, ex. le balayage
+// vertical du mois resterait actif sur la page jour) : un seul geste finissait
+// par déclencher plusieurs navigations à la fois, d'où l'écran vide et le
+// changement de mois inattendu. On annule donc systématiquement les écouteurs
+// de la vue précédente avant d'attacher les nouveaux.
+let swipeController = null;
+
+// Appelé par app.js à chaque changement d'onglet, pour retirer les écouteurs
+// de balayage même quand on quitte le calendrier sans repasser par une vue
+// jour/mois (sinon ils resteraient actifs par-dessus les autres pages).
+export function cleanupSwipe(container) {
+  if (swipeController) {
+    swipeController.abort();
+    swipeController = null;
+  }
+  if (container) container.style.touchAction = "";
+}
+
+function resetSwipe(container) {
+  if (swipeController) swipeController.abort();
+  swipeController = new AbortController();
+  container.style.touchAction = "";
+  return swipeController.signal;
+}
+
 // Balayage horizontal (vue jour) : bascule sur le jour précédent/suivant.
 // Ignore les gestes qui démarrent sur un rendez-vous (.appt-block) pour ne pas
 // entrer en conflit avec le glisser-déposer d'horaire, ni sur un contrôle
 // interactif (bouton, champ...).
 function wireHorizontalSwipe(container, onSwipe) {
+  const signal = resetSwipe(container);
   let startX = 0;
   let startY = 0;
   let dragging = false;
@@ -58,7 +87,7 @@ function wireHorizontalSwipe(container, onSwipe) {
     startY = e.clientY;
     dragging = true;
     axis = null;
-  });
+  }, { signal });
   container.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     const dx = e.clientX - startX;
@@ -66,7 +95,7 @@ function wireHorizontalSwipe(container, onSwipe) {
     if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
       axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
     }
-  });
+  }, { signal });
   function endDrag(e) {
     if (!dragging) return;
     dragging = false;
@@ -74,14 +103,15 @@ function wireHorizontalSwipe(container, onSwipe) {
     const dx = e.clientX - startX;
     if (Math.abs(dx) >= THRESHOLD) onSwipe(dx < 0 ? 1 : -1);
   }
-  container.addEventListener("pointerup", endDrag);
-  container.addEventListener("pointercancel", endDrag);
+  container.addEventListener("pointerup", endDrag, { signal });
+  container.addEventListener("pointercancel", endDrag, { signal });
 }
 
 // Balayage vertical (vue mois, comme dans Calendrier d'Apple) : bascule sur le
 // mois précédent/suivant. Un tap normal sur un jour (peu de mouvement) continue
 // de fonctionner via son propre gestionnaire de clic.
 function wireVerticalSwipe(container, onSwipe) {
+  const signal = resetSwipe(container);
   let startX = 0;
   let startY = 0;
   let dragging = false;
@@ -94,7 +124,7 @@ function wireVerticalSwipe(container, onSwipe) {
     startY = e.clientY;
     dragging = true;
     axis = null;
-  });
+  }, { signal });
   container.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     const dx = e.clientX - startX;
@@ -102,7 +132,7 @@ function wireVerticalSwipe(container, onSwipe) {
     if (axis === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
       axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
     }
-  });
+  }, { signal });
   function endDrag(e) {
     if (!dragging) return;
     dragging = false;
@@ -110,8 +140,8 @@ function wireVerticalSwipe(container, onSwipe) {
     const dy = e.clientY - startY;
     if (Math.abs(dy) >= THRESHOLD) onSwipe(dy < 0 ? 1 : -1);
   }
-  container.addEventListener("pointerup", endDrag);
-  container.addEventListener("pointercancel", endDrag);
+  container.addEventListener("pointerup", endDrag, { signal });
+  container.addEventListener("pointercancel", endDrag, { signal });
 }
 
 // --- Vue Année ---

@@ -14,6 +14,7 @@ import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
 import { refreshVoiceSettingsCache } from "./huggyVoice.js";
+import { cleanupSwipe as cleanupCalendarSwipe } from "./views/calendar.js";
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();
@@ -58,6 +59,7 @@ async function renderRoute() {
   });
 
   viewEl.scrollTop = 0;
+  cleanupCalendarSwipe(viewEl);
   try {
     await mod.render(viewEl, id ? { id } : undefined);
   } catch (err) {
