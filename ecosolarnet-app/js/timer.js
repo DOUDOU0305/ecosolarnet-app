@@ -33,7 +33,10 @@ export function formatDuration(totalSeconds) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return [h, m, sec].map((n) => String(n).padStart(2, "0")).join(":");
+  const hh = String(h).padStart(2, "0");
+  const mm = String(m).padStart(2, "0");
+  const ss = String(sec).padStart(2, "0");
+  return `${hh}h${mm}:${ss}`;
 }
 
 export async function getActiveTimer() {
