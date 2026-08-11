@@ -24,9 +24,14 @@ const SYNCED_STORES = [
 const BOOTSTRAP_KEY = "ecosolarnet_sync_bootstrapped_v1";
 
 let db = null;
+let fns = null;
 let applyingRemote = false;
+let readyResolve;
+const ready = new Promise((resolve) => {
+  readyResolve = resolve;
+});
 
-async function pushToFirestore(fns, storeName, record) {
+async function pushToFirestore(storeName, record) {
   try {
     const ref = fns.doc(db, "artisans", WORKSPACE_ID, storeName, String(record.id));
     await fns.setDoc(ref, record);
@@ -35,7 +40,7 @@ async function pushToFirestore(fns, storeName, record) {
   }
 }
 
-async function deleteFromFirestore(fns, storeName, id) {
+async function deleteFromFirestore(storeName, id) {
   try {
     await fns.deleteDoc(fns.doc(db, "artisans", WORKSPACE_ID, storeName, String(id)));
   } catch (err) {
@@ -65,15 +70,33 @@ async function applyRemoteDelete(storeName, id) {
   window.dispatchEvent(new CustomEvent("ecosolarnet:sync"));
 }
 
-async function bootstrapIfNeeded(fns) {
+async function bootstrapIfNeeded() {
   if (localStorage.getItem(BOOTSTRAP_KEY)) return;
   for (const storeName of SYNCED_STORES) {
     const records = await Store.getAll(storeName);
     for (const record of records) {
-      await pushToFirestore(fns, storeName, record);
+      await pushToFirestore(storeName, record);
     }
   }
   localStorage.setItem(BOOTSTRAP_KEY, "1");
+}
+
+// Registered synchronously (before any `await`) so that a write/delete made
+// in the first instant after app boot — before Firebase has finished its
+// async init below — isn't silently dropped. The push itself just waits on
+// `ready`; nothing here needs `db`/`fns` to already exist.
+export function installSyncHooks() {
+  if (!FIREBASE_CONFIGURED) return;
+  onStoreWrite(async (storeName, record) => {
+    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
+    await ready;
+    pushToFirestore(storeName, record);
+  });
+  onStoreDelete(async (storeName, id) => {
+    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
+    await ready;
+    deleteFromFirestore(storeName, id);
+  });
 }
 
 export async function startFirebaseSync() {
@@ -86,7 +109,7 @@ export async function startFirebaseSync() {
   ]);
   const { getAuth, signInAnonymously, onAuthStateChanged } = authMod;
   const { initializeFirestore, persistentLocalCache, doc, setDoc, deleteDoc, collection, onSnapshot } = fsMod;
-  const fns = { doc, setDoc, deleteDoc };
+  fns = { doc, setDoc, deleteDoc };
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -99,16 +122,8 @@ export async function startFirebaseSync() {
     signInAnonymously(auth).catch(reject);
   });
 
-  onStoreWrite((storeName, record) => {
-    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
-    pushToFirestore(fns, storeName, record);
-  });
-  onStoreDelete((storeName, id) => {
-    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
-    deleteFromFirestore(fns, storeName, id);
-  });
-
-  await bootstrapIfNeeded(fns);
+  readyResolve();
+  await bootstrapIfNeeded();
 
   for (const storeName of SYNCED_STORES) {
     onSnapshot(collection(db, "artisans", WORKSPACE_ID, storeName), (snapshot) => {

@@ -15,7 +15,9 @@ import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
 import { refreshVoiceSettingsCache } from "./huggyVoice.js";
 import { cleanupSwipe as cleanupCalendarSwipe } from "./views/calendar.js";
-import { startFirebaseSync } from "./firebaseSync.js";
+import { installSyncHooks, startFirebaseSync } from "./firebaseSync.js";
+
+installSyncHooks();
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();

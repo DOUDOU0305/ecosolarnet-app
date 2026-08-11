@@ -163,10 +163,11 @@ export const DEFAULT_SETTINGS = {
 
 export async function getSettings() {
   const s = await Store.get("settings", "main");
-  if (!s) {
-    await Store.put("settings", { ...DEFAULT_SETTINGS });
-    return { ...DEFAULT_SETTINGS };
-  }
+  // Deliberately does NOT persist/push defaults when nothing exists locally yet:
+  // on a device that just installed the app, "no local settings" doesn't mean
+  // "no settings at all" — the real ones may still be a few seconds away via
+  // sync. Writing (and thus pushing) a blank default here would clobber them.
+  if (!s) return { ...DEFAULT_SETTINGS };
   return { ...DEFAULT_SETTINGS, ...s };
 }
 
