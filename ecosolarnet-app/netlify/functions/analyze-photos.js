@@ -1,4 +1,6 @@
-exports.handler = async function handler(event) {
+const { withCors } = require("./_cors.js");
+
+exports.handler = withCors(async function handler(event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -109,4 +111,4 @@ N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport) que si ce
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message || "Erreur inconnue" }) };
   }
-};
+});

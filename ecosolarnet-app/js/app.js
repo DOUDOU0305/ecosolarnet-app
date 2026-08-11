@@ -15,6 +15,7 @@ import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
 import { refreshVoiceSettingsCache } from "./huggyVoice.js";
 import { cleanupSwipe as cleanupCalendarSwipe } from "./views/calendar.js";
+import { startFirebaseSync } from "./firebaseSync.js";
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();
@@ -145,7 +146,10 @@ tabButtons.forEach((btn) => {
 });
 
 window.addEventListener("hashchange", renderRoute);
+window.addEventListener("ecosolarnet:sync", renderRoute);
 renderRoute();
+
+startFirebaseSync().catch((err) => console.error("[sync] init failed", err));
 
 getSettings().then((s) => {
   if (s.autoTimerEnabled) startAutoWatch();

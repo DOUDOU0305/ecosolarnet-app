@@ -33,6 +33,18 @@ async function tx(storeName, mode) {
 
 export { STORES };
 
+// Sync hooks: firebaseSync.js registers here without db.js needing to know
+// anything about Firebase. Keeps this module dependency-free and testable
+// even when sync is never configured.
+const writeHooks = [];
+const deleteHooks = [];
+export function onStoreWrite(fn) {
+  writeHooks.push(fn);
+}
+export function onStoreDelete(fn) {
+  deleteHooks.push(fn);
+}
+
 export const Store = {
   async getAll(storeName) {
     const store = await tx(storeName, "readonly");
@@ -54,10 +66,14 @@ export const Store = {
 
   async put(storeName, record) {
     if (!record.id) record.id = uid();
+    if (!record._syncedAt) record._syncedAt = Date.now();
     const store = await tx(storeName, "readwrite");
     return new Promise((resolve, reject) => {
       const req = store.put(record);
-      req.onsuccess = () => resolve(record);
+      req.onsuccess = () => {
+        writeHooks.forEach((fn) => fn(storeName, record));
+        resolve(record);
+      };
       req.onerror = () => reject(req.error);
     });
   },
@@ -66,7 +82,10 @@ export const Store = {
     const store = await tx(storeName, "readwrite");
     return new Promise((resolve, reject) => {
       const req = store.delete(id);
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => {
+        deleteHooks.forEach((fn) => fn(storeName, id));
+        resolve();
+      };
       req.onerror = () => reject(req.error);
     });
   },
