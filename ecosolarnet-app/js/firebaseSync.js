@@ -19,22 +19,40 @@ const SYNCED_STORES = [
   "visitTimes",
   "reminders",
   "ideas",
+  "whatsappMessages",
 ];
 
 const BOOTSTRAP_KEY = "ecosolarnet_sync_bootstrapped_v1";
 
 let db = null;
-let fns = null;
 let applyingRemote = false;
 let readyResolve;
 const ready = new Promise((resolve) => {
   readyResolve = resolve;
 });
 
+// Dynamic `import()` of a remote ES module hangs indefinitely in the
+// Capacitor/WKWebView shell (plain fetch() to the same URL works fine —
+// this is a WebKit quirk with cross-origin module loading in that context,
+// not a network issue). Classic <script> tags don't hit that code path, so
+// we load Firebase's "compat" (v8-shaped API) builds this way instead.
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load " + src));
+    document.head.appendChild(s);
+  });
+}
+
+function docRef(storeName, id) {
+  return db.collection("artisans").doc(WORKSPACE_ID).collection(storeName).doc(String(id));
+}
+
 async function pushToFirestore(storeName, record) {
   try {
-    const ref = fns.doc(db, "artisans", WORKSPACE_ID, storeName, String(record.id));
-    await fns.setDoc(ref, record);
+    await docRef(storeName, record.id).set(record);
   } catch (err) {
     console.warn("[sync] push failed", storeName, err);
   }
@@ -42,7 +60,7 @@ async function pushToFirestore(storeName, record) {
 
 async function deleteFromFirestore(storeName, id) {
   try {
-    await fns.deleteDoc(fns.doc(db, "artisans", WORKSPACE_ID, storeName, String(id)));
+    await docRef(storeName, id).delete();
   } catch (err) {
     console.warn("[sync] delete failed", storeName, err);
   }
@@ -84,7 +102,7 @@ async function bootstrapIfNeeded() {
 // Registered synchronously (before any `await`) so that a write/delete made
 // in the first instant after app boot — before Firebase has finished its
 // async init below — isn't silently dropped. The push itself just waits on
-// `ready`; nothing here needs `db`/`fns` to already exist.
+// `ready`; nothing here needs `db` to already exist.
 export function installSyncHooks() {
   if (!FIREBASE_CONFIGURED) return;
   onStoreWrite(async (storeName, record) => {
@@ -102,35 +120,39 @@ export function installSyncHooks() {
 export async function startFirebaseSync() {
   if (!FIREBASE_CONFIGURED) return;
 
-  const [{ initializeApp }, authMod, fsMod] = await Promise.all([
-    import(`${BASE}/firebase-app.js`),
-    import(`${BASE}/firebase-auth.js`),
-    import(`${BASE}/firebase-firestore.js`),
-  ]);
-  const { getAuth, signInAnonymously, onAuthStateChanged } = authMod;
-  const { initializeFirestore, persistentLocalCache, doc, setDoc, deleteDoc, collection, onSnapshot } = fsMod;
-  fns = { doc, setDoc, deleteDoc };
+  await loadScript(`${BASE}/firebase-app-compat.js`);
+  await Promise.all([loadScript(`${BASE}/firebase-auth-compat.js`), loadScript(`${BASE}/firebase-firestore-compat.js`)]);
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  db = initializeFirestore(app, { localCache: persistentLocalCache() });
+  const fb = window.firebase;
+  fb.initializeApp(firebaseConfig);
+  const auth = fb.auth();
+  db = fb.firestore();
+  try {
+    await db.enablePersistence();
+  } catch (err) {
+    // Multi-tab or unsupported browser: falls back to in-memory cache, fine.
+    console.warn("[sync] offline persistence unavailable", err.code || err);
+  }
 
   await new Promise((resolve, reject) => {
-    onAuthStateChanged(auth, (user) => {
+    auth.onAuthStateChanged((user) => {
       if (user) resolve();
     });
-    signInAnonymously(auth).catch(reject);
+    auth.signInAnonymously().catch(reject);
   });
 
   readyResolve();
   await bootstrapIfNeeded();
 
   for (const storeName of SYNCED_STORES) {
-    onSnapshot(collection(db, "artisans", WORKSPACE_ID, storeName), (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "removed") applyRemoteDelete(storeName, change.doc.id);
-        else applyRemoteWrite(storeName, change.doc.data());
+    db.collection("artisans")
+      .doc(WORKSPACE_ID)
+      .collection(storeName)
+      .onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "removed") applyRemoteDelete(storeName, change.doc.id);
+          else applyRemoteWrite(storeName, change.doc.data());
+        });
       });
-    });
   }
 }

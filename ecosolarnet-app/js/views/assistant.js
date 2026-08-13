@@ -2,6 +2,7 @@ import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { speak } from "../huggyVoice.js";
 import { geocodeAddress, fullAddress, computeRouteKm } from "../geo.js";
+import { FUNCTIONS_BASE } from "../config.js";
 
 let log = [];
 let busy = false;
@@ -111,7 +112,7 @@ async function handleSend(container) {
   try {
     const settings = await getSettings();
     const allClients = await Store.getAll("clients");
-    const res = await fetch("/.netlify/functions/assistant", {
+    const res = await fetch(`${FUNCTIONS_BASE}/assistant`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
