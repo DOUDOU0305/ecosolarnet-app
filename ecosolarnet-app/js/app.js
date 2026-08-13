@@ -6,6 +6,7 @@ import * as waitlist from "./views/waitlist.js";
 import * as settings from "./views/settings.js";
 import * as emails from "./views/emails.js";
 import * as whatsapp from "./views/whatsapp.js";
+import * as qrcodes from "./views/qrcodes.js";
 import * as assistant from "./views/assistant.js";
 import * as reminders from "./views/reminders.js";
 import * as ideas from "./views/ideas.js";
@@ -34,6 +35,7 @@ const routes = {
   settings,
   emails,
   whatsapp,
+  qrcodes,
   assistant,
   reminders,
   ideas,
@@ -43,7 +45,7 @@ const routes = {
 // Ces routes n'ont plus leur propre onglet en bas (pour respecter la limite de
 // 5 onglets recommandée par Apple) : elles sont accessibles via l'onglet "Plus",
 // qui doit donc rester actif visuellement quand on est dessus.
-const MORE_ROUTES = new Set(["waitlist", "emails", "whatsapp", "assistant", "settings", "reminders", "ideas"]);
+const MORE_ROUTES = new Set(["waitlist", "emails", "whatsapp", "qrcodes", "assistant", "settings", "reminders", "ideas"]);
 
 const viewEl = document.getElementById("view");
 const tabButtons = document.querySelectorAll(".tab-btn");

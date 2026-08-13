@@ -192,8 +192,6 @@ export async function renderYear(container, year) {
 
 export async function renderMonth(container, monthStr) {
   const [year, month] = monthStr.split("-").map(Number);
-  const settings = await getSettings();
-  const defenseCodes = settings.defenseDayCodes || [];
   const entries = await Store.getAll("planningEntries");
   const entryByDate = new Map(entries.map((e) => [e.date, e]));
 
@@ -207,13 +205,13 @@ export async function renderMonth(container, monthStr) {
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${pad2(month)}-${pad2(d)}`;
     const entry = entryByDate.get(dateStr);
-    const isDefense = entry && !entry.tourneeId && defenseCodes.includes(entry.label);
+    const isBlocked = entry && !entry.tourneeId && entry.label;
     const isToday = dateStr === today;
     cells += `
       <button type="button" class="cal-day-btn${isToday ? " cal-today" : ""}" data-date="${dateStr}"
-        style="aspect-ratio:1;border:1px solid ${isToday ? "var(--danger)" : "var(--border)"};border-radius:8px;background:${isDefense ? "rgba(201,151,79,0.16)" : entry ? "var(--teal-light)" : "white"};font-family:inherit;font-size:13px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer">
+        style="aspect-ratio:1;border:1px solid ${isToday ? "var(--danger)" : "var(--border)"};border-radius:8px;background:${isBlocked ? "rgba(201,151,79,0.16)" : entry ? "var(--teal-light)" : "white"};font-family:inherit;font-size:13px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer">
         <span style="${isToday ? "background:var(--danger);color:white;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700" : "font-weight:400"}">${d}</span>
-        ${isDefense ? `<span style="font-size:9px;color:var(--sun-text);font-weight:600">${escapeHtml(entry.label)}</span>` : entry ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--teal-dark)"></span>` : ""}
+        ${isBlocked ? `<span style="font-size:9px;color:var(--sun-text);font-weight:600;text-align:center;line-height:1.1">${escapeHtml(entry.label)}</span>` : entry ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--teal-dark)"></span>` : ""}
       </button>
     `;
   }
@@ -341,7 +339,9 @@ export async function renderDay(container, dateStr) {
   }
 
   const defenseCodes = settings.defenseDayCodes || [];
-  let currentDefenseCode = (!existingEntry?.tourneeId && existingEntry?.label && defenseCodes.includes(existingEntry.label)) ? existingEntry.label : "";
+  const isBlockedDay = !!(existingEntry && !existingEntry.tourneeId && existingEntry.label);
+  let currentBlockLabel = isBlockedDay ? existingEntry.label : "";
+  let currentDefenseCode = isBlockedDay && defenseCodes.includes(currentBlockLabel) ? currentBlockLabel : "";
 
   const dateObj = new Date(dateStr + "T12:00:00");
   const totalMinutes = DAY_END - DAY_START;
@@ -362,6 +362,12 @@ export async function renderDay(container, dateStr) {
         </select>
       </div>
     ` : ""}
+
+    <div class="field" style="max-width:260px" id="personal-block-field">
+      <label>Empêchement personnel</label>
+      <input type="text" id="personal-block-input" placeholder="Ex : Congé, RDV comptable, Banque, Dentiste..." value="${escapeHtml(currentBlockLabel && !defenseCodes.includes(currentBlockLabel) ? currentBlockLabel : "")}">
+      <button type="button" class="btn secondary block" id="personal-block-btn" style="margin-top:8px">Bloquer cette journée</button>
+    </div>
 
     <div id="defense-notice"></div>
 
@@ -408,19 +414,36 @@ export async function renderDay(container, dateStr) {
     const notice = container.querySelector("#defense-notice");
     const addClientField = container.querySelector("#add-client-field");
     const pasteField = container.querySelector("#paste-field");
-    if (currentDefenseCode) {
+    const blockField = container.querySelector("#personal-block-field");
+    if (currentBlockLabel) {
+      const isDefense = defenseCodes.includes(currentBlockLabel);
       notice.innerHTML = `
         <div class="card" style="background:rgba(201,151,79,0.14);border:none">
-          <strong>🪖 Jour de Défense : ${escapeHtml(currentDefenseCode)}</strong>
-          <p class="muted" style="margin:4px 0 0">Aucun client ne peut être ajouté ce jour-là. Choisissez "— Aucun —" ci-dessus pour libérer ce jour.</p>
+          <strong>${isDefense ? "🪖 Jour de Défense" : "🚫 Jour bloqué"} : ${escapeHtml(currentBlockLabel)}</strong>
+          <p class="muted" style="margin:4px 0 10px">Aucun client ne peut être ajouté ce jour-là.</p>
+          <button type="button" class="btn secondary block" id="unblock-day-btn">Débloquer cette journée</button>
         </div>
       `;
+      notice.querySelector("#unblock-day-btn").addEventListener("click", async () => {
+        currentBlockLabel = "";
+        currentDefenseCode = "";
+        if (defenseSelect) defenseSelect.value = "";
+        const blockInput = container.querySelector("#personal-block-input");
+        if (blockInput) blockInput.value = "";
+        await saveDefenseDay("");
+        renderDefenseNotice();
+        renderBlocks();
+        refreshAddSelect();
+        showToast("Jour débloqué");
+      });
       if (addClientField) addClientField.style.display = "none";
       if (pasteField) pasteField.style.display = "none";
+      if (blockField) blockField.style.display = "none";
     } else {
       notice.innerHTML = "";
       if (addClientField) addClientField.style.display = "";
       if (pasteField) pasteField.style.display = "";
+      if (blockField) blockField.style.display = "";
     }
   }
   renderDefenseNotice();
@@ -429,6 +452,9 @@ export async function renderDay(container, dateStr) {
   if (defenseSelect) {
     defenseSelect.addEventListener("change", async (e) => {
       currentDefenseCode = e.target.value;
+      currentBlockLabel = currentDefenseCode;
+      const blockInput = container.querySelector("#personal-block-input");
+      if (blockInput) blockInput.value = "";
       await saveDefenseDay(currentDefenseCode);
       renderDefenseNotice();
       renderBlocks();
@@ -436,6 +462,23 @@ export async function renderDay(container, dateStr) {
       showToast(currentDefenseCode ? `Jour marqué : ${currentDefenseCode}` : "Jour libéré");
     });
   }
+
+  container.querySelector("#personal-block-btn")?.addEventListener("click", async () => {
+    const input = container.querySelector("#personal-block-input");
+    const label = input.value.trim();
+    if (!label) {
+      showToast("Indiquez un intitulé (ex : Congé, RDV comptable...)");
+      return;
+    }
+    currentBlockLabel = label;
+    currentDefenseCode = "";
+    if (defenseSelect) defenseSelect.value = "";
+    await saveDefenseDay(label);
+    renderDefenseNotice();
+    renderBlocks();
+    refreshAddSelect();
+    showToast(`Jour bloqué : ${label}`);
+  });
 
   async function saveDefenseDay(code) {
     const existingTimes = await Store.getAll("visitTimes");

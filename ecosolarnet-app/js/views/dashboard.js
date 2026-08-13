@@ -6,8 +6,6 @@ import { onDepartureEvent, fmtMinutesOfDay } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
 import { speak } from "../huggyVoice.js";
-import { generateQrDataUrl } from "../qrcode.js";
-import { buildEpcQrPayload } from "../paymentQr.js";
 let elapsedIntervalId = null;
 let unsubscribeTimer = null;
 let unsubscribeDeparture = null;
@@ -80,33 +78,6 @@ export async function render(container) {
       `).join("")}
     </div>
 
-    ${settings.iban || settings.googleReviewUrl ? `
-      <div class="card">
-        <h3 style="margin-top:0">Codes QR pour le client</h3>
-        ${settings.iban ? `
-          <div class="field">
-            <label>Montant à payer (€)</label>
-            <input type="number" step="0.01" min="0" id="qr-amount-input" placeholder="Ex : 120">
-          </div>
-          <div style="text-align:center;margin-bottom:6px">
-            <div id="pay-qr-preview" style="display:inline-block;padding:8px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
-            <p class="muted" style="margin:6px 0 0">💳 Payer par QR code</p>
-            <p class="muted" style="margin:2px 0 0;font-size:11.5px">À scanner depuis l'appli bancaire du client (pas l'appareil photo)</p>
-          </div>
-          <div class="card-row" style="background:var(--fill);border-radius:var(--radius-sm);padding:9px 12px;margin-bottom:14px">
-            <span class="muted" style="font-size:13px">IBAN : ${escapeHtml(settings.iban)}</span>
-            <button type="button" class="btn secondary small" id="copy-iban-btn">Copier</button>
-          </div>
-        ` : ""}
-        ${settings.googleReviewUrl ? `
-          <div style="text-align:center">
-            <div id="review-qr-preview" style="display:inline-block;padding:8px;background:white;border-radius:10px;border:1px solid var(--border)"></div>
-            <p class="muted" style="margin:6px 0 0">⭐ Laisser un avis Google</p>
-          </div>
-        ` : ""}
-      </div>
-    ` : ""}
-
     <div class="card">
       <div class="card-row" style="margin-bottom:8px">
         <h3 style="margin:0">Chronomètre</h3>
@@ -144,51 +115,6 @@ export async function render(container) {
       await updateTodayTimerButtons(container);
     });
   });
-
-  async function renderPayQr(amount) {
-    const preview = container.querySelector("#pay-qr-preview");
-    if (!preview) return;
-    try {
-      const payload = buildEpcQrPayload({
-        bic: settings.bic,
-        name: settings.companyName,
-        iban: settings.iban,
-        amount: amount || 0,
-        remittance: `Paiement ${settings.companyName}`,
-      });
-      const dataUrl = await generateQrDataUrl(payload, 260);
-      preview.innerHTML = `<img src="${dataUrl}" alt="QR de paiement" style="width:130px;height:130px;display:block">`;
-    } catch {
-      preview.innerHTML = `<p class="muted" style="margin:0">QR indisponible</p>`;
-    }
-  }
-
-  if (settings.iban) {
-    renderPayQr(0);
-    let qrDebounce;
-    container.querySelector("#qr-amount-input").addEventListener("input", (e) => {
-      clearTimeout(qrDebounce);
-      const val = parseFloat(e.target.value) || 0;
-      qrDebounce = setTimeout(() => renderPayQr(val), 300);
-    });
-    container.querySelector("#copy-iban-btn").addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(settings.iban.replace(/\s+/g, ""));
-        showToast("IBAN copié");
-      } catch {
-        showToast("Impossible de copier — sélectionnez le texte manuellement");
-      }
-    });
-  }
-
-  if (settings.googleReviewUrl) {
-    generateQrDataUrl(settings.googleReviewUrl, 260)
-      .then((dataUrl) => {
-        const preview = container.querySelector("#review-qr-preview");
-        if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="QR avis Google" style="width:130px;height:130px;display:block">`;
-      })
-      .catch(() => {});
-  }
 
   const autoToggleBtn = container.querySelector("#auto-timer-toggle-btn");
   autoToggleBtn.addEventListener("click", async () => {

@@ -22,7 +22,7 @@ const SERVICE_LABELS = {
 };
 
 export async function render(container, params) {
-  if (params && params.id === "new") return renderForm(container);
+  if (params && params.id) return renderForm(container, params.id === "new" ? null : params.id);
   return renderList(container);
 }
 
@@ -51,7 +51,10 @@ async function renderList(container) {
               <strong>${escapeHtml(e.name)}</strong>
               <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${SERVICE_LABELS[e.serviceType] || ""}</div>
             </div>
-            <button type="button" class="btn danger small" data-remove="${e.id}">Retirer</button>
+            <div style="display:flex;gap:6px;flex:none">
+              <button type="button" class="btn small" data-edit="${e.id}">Modifier</button>
+              <button type="button" class="btn danger small" data-remove="${e.id}">Retirer</button>
+            </div>
           </div>
         `).join("")}
         <button type="button" class="btn block" data-generate="${m}" style="margin-top:10px">Générer le planning pour ce mois</button>
@@ -63,6 +66,12 @@ async function renderList(container) {
 
   container.querySelector("#add-waitlist-btn").addEventListener("click", () => {
     location.hash = "#/waitlist/new";
+  });
+
+  container.querySelectorAll("[data-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      location.hash = `#/waitlist/${btn.dataset.edit}`;
+    });
   });
 
   container.querySelectorAll("[data-remove]").forEach((btn) => {
@@ -251,64 +260,66 @@ async function validateProposal(container, month, entries, zone) {
   await renderList(container);
 }
 
-async function renderForm(container) {
+async function renderForm(container, editId = null) {
   const clients = await Store.getAll("clients");
   clients.sort((a, b) => a.name.localeCompare(b.name));
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const defaultMonth = nextMonthStr(currentMonthStr);
+  const existing = editId ? await Store.get("waitlist", editId) : null;
 
   container.innerHTML = `
     <button class="back-btn" id="back-btn">‹ Retour</button>
-    <h1>Ajouter à la liste d'attente</h1>
+    <h1>${existing ? "Modifier" : "Ajouter à"} la liste d'attente</h1>
     <form id="waitlist-form" class="card">
       <div class="field">
         <label>Client existant (optionnel)</label>
         <select id="client-select">
           <option value="">— Nouveau prospect (saisie libre) —</option>
-          ${clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${c.postalCode})</option>`).join("")}
+          ${clients.map((c) => `<option value="${c.id}" ${existing?.clientId === c.id ? "selected" : ""}>${escapeHtml(c.name)} (${c.postalCode})</option>`).join("")}
         </select>
       </div>
       <div id="manual-fields">
         <div class="field">
           <label>Nom *</label>
-          <input name="name" placeholder="Nom / société">
+          <input name="name" placeholder="Nom / société" value="${escapeHtml(existing?.name || "")}">
         </div>
         <div class="field">
           <label>Adresse</label>
-          <input name="address" id="wl-address-input" placeholder="Commencez à taper l'adresse…" autocomplete="off">
+          <input name="address" id="wl-address-input" placeholder="Commencez à taper l'adresse…" autocomplete="off" value="${escapeHtml(existing?.address || "")}">
         </div>
         <div class="grid-2">
           <div class="field">
             <label>Code postal *</label>
-            <input name="postalCode" id="wl-postal-input" inputmode="numeric" placeholder="6280">
+            <input name="postalCode" id="wl-postal-input" inputmode="numeric" placeholder="6280" value="${escapeHtml(existing?.postalCode || "")}">
           </div>
           <div class="field">
             <label>Ville</label>
-            <input name="city" id="wl-city-input">
+            <input name="city" id="wl-city-input" value="${escapeHtml(existing?.city || "")}">
           </div>
         </div>
       </div>
       <div class="field">
         <label>Prestation</label>
         <select name="serviceType">
-          ${Object.entries(SERVICE_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}
+          ${Object.entries(SERVICE_LABELS).map(([k, l]) => `<option value="${k}" ${existing?.serviceType === k ? "selected" : ""}>${l}</option>`).join("")}
         </select>
       </div>
       <div class="field">
         <label>Mois souhaité *</label>
-        <input type="month" name="targetMonth" required value="${defaultMonth}">
+        <input type="month" name="targetMonth" required value="${existing?.targetMonth || defaultMonth}">
       </div>
       <div class="field">
         <label>Notes</label>
-        <textarea name="notes" rows="2"></textarea>
+        <textarea name="notes" rows="2">${escapeHtml(existing?.notes || "")}</textarea>
       </div>
-      <button type="submit" class="btn block">Ajouter à la liste d'attente</button>
+      <button type="submit" class="btn block">${existing ? "Enregistrer les modifications" : "Ajouter à la liste d'attente"}</button>
     </form>
   `;
 
   const clientSelect = container.querySelector("#client-select");
   const manualFields = container.querySelector("#manual-fields");
+  manualFields.style.display = clientSelect.value ? "none" : "";
   clientSelect.addEventListener("change", () => {
     manualFields.style.display = clientSelect.value ? "none" : "";
   });
@@ -345,22 +356,24 @@ async function renderForm(container) {
     }
 
     const record = {
+      ...(existing || {}),
+      id: existing?.id,
       clientId,
       name,
       address: client ? client.address : fd.get("address").trim(),
       postalCode,
       city: client ? client.city : fd.get("city").trim(),
-      phone: client ? client.phone : "",
-      email: client ? client.email : "",
+      phone: client ? client.phone : existing?.phone || "",
+      email: client ? client.email : existing?.email || "",
       serviceType: fd.get("serviceType"),
       targetMonth: fd.get("targetMonth"),
       notes: fd.get("notes").trim(),
-      lat: client?.lat ?? pickedCoords?.lat ?? null,
-      lng: client?.lng ?? pickedCoords?.lng ?? null,
-      createdAt: new Date().toISOString(),
+      lat: client?.lat ?? pickedCoords?.lat ?? existing?.lat ?? null,
+      lng: client?.lng ?? pickedCoords?.lng ?? existing?.lng ?? null,
+      createdAt: existing?.createdAt || new Date().toISOString(),
     };
     const saved = await Store.put("waitlist", record);
-    showToast("Ajouté à la liste d'attente");
+    showToast(existing ? "Modifications enregistrées" : "Ajouté à la liste d'attente");
 
     if (!client && !pickedCoords) {
       geocodeAddress(fullAddress(saved))

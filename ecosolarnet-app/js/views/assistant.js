@@ -54,6 +54,9 @@ function parseHM(str) {
 async function scheduleClientOnDate(client, dateStr, startMinutes, durationMinutes) {
   const existingEntries = await Store.getAll("planningEntries");
   const currentEntry = existingEntries.find((p) => p.date === dateStr);
+  if (currentEntry && !currentEntry.tourneeId && currentEntry.label) {
+    return { blocked: true, label: currentEntry.label };
+  }
   const tournee = currentEntry?.tourneeId ? await Store.get("tournees", currentEntry.tourneeId) : null;
 
   const clientIds = tournee ? [...tournee.clientIds] : [];
@@ -97,6 +100,7 @@ async function scheduleClientOnDate(client, dateStr, startMinutes, durationMinut
   });
 
   await Store.put("planningEntries", { id: currentEntry?.id, date: dateStr, tourneeId: saved.id, label: saved.name });
+  return { blocked: false };
 }
 
 async function handleSend(container) {
@@ -163,7 +167,10 @@ async function handleSend(container) {
           ? Math.round(clientVisits.reduce((s, v) => s + v.durationSeconds, 0) / clientVisits.length / 60)
           : 60;
         const startMinutes = data.appointment.time ? parseHM(data.appointment.time) : 8 * 60;
-        await scheduleClientOnDate(matched, data.appointment.date, startMinutes, Math.max(15, avgMin));
+        const result = await scheduleClientOnDate(matched, data.appointment.date, startMinutes, Math.max(15, avgMin));
+        if (result.blocked) {
+          finalReply = `Impossible : le ${data.appointment.date} est bloqué (${result.label}), aucun client ne peut y être ajouté.`;
+        }
       } else {
         finalReply = `Je n'ai pas trouvé de client nommé "${data.appointment.clientName}" — ajoutez-le d'abord.`;
       }
