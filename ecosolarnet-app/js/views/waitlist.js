@@ -21,6 +21,17 @@ const SERVICE_LABELS = {
   panneaux: "Nettoyage panneaux solaires",
 };
 
+// e.serviceTypes est le format actuel (tableau, plusieurs prestations
+// possibles) ; e.serviceType (singulier) reste lu pour les entrées créées
+// avant ce changement, qui n'avaient qu'une seule prestation.
+function entryServiceTypes(e) {
+  return e.serviceTypes || (e.serviceType ? [e.serviceType] : []);
+}
+
+function serviceLabelsLine(e) {
+  return entryServiceTypes(e).map((t) => SERVICE_LABELS[t] || t).join(", ") || "—";
+}
+
 export async function render(container, params) {
   if (params && params.id) return renderForm(container, params.id === "new" ? null : params.id);
   return renderList(container);
@@ -49,7 +60,7 @@ async function renderList(container) {
           <div class="list-item">
             <div>
               <strong>${escapeHtml(e.name)}</strong>
-              <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${SERVICE_LABELS[e.serviceType] || ""}</div>
+              <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
             </div>
             <div style="display:flex;gap:6px;flex:none">
               <button type="button" class="btn small" data-edit="${e.id}">Modifier</button>
@@ -161,7 +172,7 @@ function renderProposal(container, month, entries, proposedDates) {
         <div class="list-item">
           <div>
             <strong>${escapeHtml(e.name)}</strong>
-            <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${SERVICE_LABELS[e.serviceType] || ""}</div>
+            <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
           </div>
           <input type="date" class="proposal-date" data-entry="${e.id}" value="${proposedDates[e.id] || ""}" min="${todayStr}" style="width:150px;margin:0">
         </div>
@@ -221,7 +232,7 @@ async function validateProposal(container, month, entries, zone) {
           city: e.city || "",
           phone: e.phone || "",
           email: e.email || "",
-          serviceTypes: e.serviceType ? [e.serviceType] : [],
+          serviceTypes: entryServiceTypes(e),
           frequency: "ponctuel",
           notes: e.notes || "",
           lat: e.lat ?? null,
@@ -300,10 +311,13 @@ async function renderForm(container, editId = null) {
         </div>
       </div>
       <div class="field">
-        <label>Prestation</label>
-        <select name="serviceType">
-          ${Object.entries(SERVICE_LABELS).map(([k, l]) => `<option value="${k}" ${existing?.serviceType === k ? "selected" : ""}>${l}</option>`).join("")}
-        </select>
+        <label>Prestations</label>
+        ${Object.entries(SERVICE_LABELS).map(([k, l]) => `
+          <div class="checkbox-row">
+            <input type="checkbox" name="serviceTypes" value="${k}" id="wl-svc-${k}" ${entryServiceTypes(existing || {}).includes(k) ? "checked" : ""}>
+            <label for="wl-svc-${k}" style="margin:0;font-weight:400;color:var(--text)">${l}</label>
+          </div>
+        `).join("")}
       </div>
       <div class="field">
         <label>Mois souhaité *</label>
@@ -365,7 +379,7 @@ async function renderForm(container, editId = null) {
       city: client ? client.city : fd.get("city").trim(),
       phone: client ? client.phone : existing?.phone || "",
       email: client ? client.email : existing?.email || "",
-      serviceType: fd.get("serviceType"),
+      serviceTypes: fd.getAll("serviceTypes"),
       targetMonth: fd.get("targetMonth"),
       notes: fd.get("notes").trim(),
       lat: client?.lat ?? pickedCoords?.lat ?? existing?.lat ?? null,

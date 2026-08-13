@@ -847,7 +847,7 @@ export async function renderDay(container, dateStr) {
           city: candidate.city || "",
           phone: candidate.phone || "",
           email: candidate.email || "",
-          serviceTypes: candidate.serviceType ? [candidate.serviceType] : [],
+          serviceTypes: candidate.serviceTypes || (candidate.serviceType ? [candidate.serviceType] : []),
           frequency: "ponctuel",
           notes: candidate.notes || "",
           lat: candidate.lat ?? null,
