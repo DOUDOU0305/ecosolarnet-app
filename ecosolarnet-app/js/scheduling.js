@@ -2,6 +2,18 @@ import { haversineKm, postalCodeRoughDistance, classifyRegion } from "./geo.js";
 
 const MAX_JUMP_KM = 20; // au-delà, on ne regroupe plus sur la même journée même s'il reste de la place
 
+// Vocabulaire partagé pour la fréquence d'un abonnement (clients.js et
+// devis.js utilisaient chacun leur propre libellé, ce qui les faisait
+// diverger — ex. "Tous les 3 mois" ici, "Trimestriel" là).
+export const FREQUENCY_LABELS = {
+  hebdomadaire: "Hebdomadaire",
+  mensuel: "Mensuel",
+  bimestriel: "Bimestriel",
+  trimestriel: "Trimestriel",
+  semestriel: "Semestriel",
+  annuel: "Annuel",
+};
+
 function distanceBetween(from, item, base) {
   const fromCoord = from && from.lat != null ? from : base;
   const itemCoord = item.lat != null ? { lat: item.lat, lng: item.lng } : null;

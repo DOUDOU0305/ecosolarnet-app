@@ -46,13 +46,13 @@ export async function render(container) {
   const tomorrowAppts = appointmentsForDate(tomorrowStr);
 
   container.innerHTML = `
-    <h1>Bonjour 👋</h1>
-    <p class="muted" style="margin-top:-10px">${settings.companyName} — ${now.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</p>
-    <p class="muted" id="weather-line" style="margin-top:2px">🌤️ Chargement de la météo…</p>
+    <h1 style="margin-bottom:6px">Bonjour 👋</h1>
+    <p class="muted" style="margin:0 0 2px">${settings.companyName} — ${now.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</p>
+    <p class="muted" id="weather-line" style="margin:0 0 28px">🌤️ Chargement de la météo…</p>
 
     <div id="departure-banner-zone"></div>
 
-    <div class="card">
+    <div class="card" style="margin-bottom:24px">
       <h3 style="margin-top:0">Aujourd'hui</h3>
       ${todayAppts.length === 0 ? `
         <p class="muted">Rien de prévu aujourd'hui.</p>
@@ -66,7 +66,7 @@ export async function render(container) {
       `).join("")}
     </div>
 
-    <div class="card">
+    <div class="card" style="margin-bottom:24px">
       <h3 style="margin-top:0">Demain</h3>
       ${tomorrowAppts.length === 0 ? `
         <p class="muted">Rien de prévu demain.</p>
@@ -78,17 +78,17 @@ export async function render(container) {
       `).join("")}
     </div>
 
+    <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 28px">
+      <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
+      <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
+    </div>
+
     <div class="card">
       <div class="card-row" style="margin-bottom:8px">
         <h3 style="margin:0">Chronomètre</h3>
         <button type="button" class="btn secondary small" id="auto-timer-toggle-btn">📍 GPS ${settings.autoTimerEnabled ? "activé" : "désactivé"}</button>
       </div>
       <div id="timer-zone"></div>
-    </div>
-
-    <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:6px 2px 18px">
-      <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
-      <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
   `;
 

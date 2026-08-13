@@ -3,6 +3,7 @@ import { classifyRegion, geocodeAddress, fullAddress } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { formatDuration } from "../timer.js";
 import { wireAddressAutocomplete, wirePostalCityCross } from "../addressAutocomplete.js";
+import { FREQUENCY_LABELS } from "../scheduling.js";
 
 const SERVICE_LABELS = {
   vitres: "Vitres",
@@ -87,15 +88,7 @@ function wireSwipeRows(container, onDelete) {
   });
 }
 
-const FREQ_LABELS = {
-  hebdomadaire: "Chaque semaine",
-  mensuel: "Chaque mois",
-  bimestriel: "Tous les 2 mois",
-  trimestriel: "Tous les 3 mois",
-  semestriel: "Tous les 6 mois",
-  annuel: "1 fois par an",
-  ponctuel: "Ponctuel",
-};
+const FREQ_LABELS = { ponctuel: "Ponctuel", ...FREQUENCY_LABELS };
 
 function regionPillClass(region) {
   if (region === "Bruxelles") return "region-bruxelles";

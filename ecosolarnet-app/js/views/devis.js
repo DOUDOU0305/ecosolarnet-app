@@ -4,6 +4,7 @@ import { classifyRegion, regionRateRange, haversineKm } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
 import { FUNCTIONS_BASE } from "../config.js";
+import { FREQUENCY_LABELS } from "../scheduling.js";
 
 const SERVICE_LABELS = {
   vitres: "Nettoyage vitres",
@@ -23,14 +24,6 @@ const STATUS_LABELS = {
 
 const FORMULE_LABELS = { ext: "Extérieur", full: "Intérieur + extérieur" };
 const TYPE_LABELS = { ponctuel: "Ponctuel", abonnement: "Abonnement" };
-const FREQUENCY_LABELS = {
-  hebdomadaire: "Hebdomadaire",
-  mensuel: "Mensuel",
-  bimestriel: "Bimestriel",
-  trimestriel: "Trimestriel",
-  semestriel: "Semestriel",
-  annuel: "Annuel",
-};
 
 const SWIPE_OPEN_X = -84;
 let openSwipeRow = null;
