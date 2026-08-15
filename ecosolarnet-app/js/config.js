@@ -5,3 +5,7 @@ const NETLIFY_ORIGIN = "https://frabjous-treacle-60d239.netlify.app";
 const isNative = typeof window !== "undefined" && !!window.Capacitor?.isNativePlatform?.();
 
 export const FUNCTIONS_BASE = isNative ? `${NETLIFY_ORIGIN}/.netlify/functions` : "/.netlify/functions";
+// Static assets (e.g. audio/*.mp3) must always be an absolute URL: Shotstack's
+// render service fetches them from the public internet, so a relative path
+// (which only makes sense inside the app's own WebView) would never resolve.
+export const SITE_ORIGIN = NETLIFY_ORIGIN;

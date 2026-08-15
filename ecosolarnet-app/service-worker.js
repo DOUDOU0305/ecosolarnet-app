@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v79";
+const CACHE_NAME = "ecosolarnet-v80";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const APP_SHELL = [
   "./js/app.js",
   "./js/db.js",
   "./js/config.js",
+  "./js/musicLibrary.js",
   "./js/firebaseConfig.js",
   "./js/firebaseSync.js",
   "./js/geo.js",

@@ -1,15 +1,59 @@
 import { Store, uid } from "../db.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
 import { escapeHtml, showToast } from "../toast.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, SITE_ORIGIN } from "../config.js";
+import { MUSIC_LIBRARY } from "../musicLibrary.js";
+
+const MAX_MONTAGE_PHOTOS = 6;
 
 let photos = [];
 let video = null;
+let montageBlob = null;
+let montageUrl = null;
 
 function resetDraft() {
   photos.forEach((p) => URL.revokeObjectURL(p.url));
   photos = [];
   video = null;
+  if (montageUrl) URL.revokeObjectURL(montageUrl);
+  montageBlob = null;
+  montageUrl = null;
+}
+
+function getVideoDuration(file) {
+  return new Promise((resolve) => {
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    el.onloadedmetadata = () => {
+      URL.revokeObjectURL(el.src);
+      resolve(el.duration || 5);
+    };
+    el.onerror = () => resolve(5);
+    el.src = URL.createObjectURL(file);
+  });
+}
+
+// Uploads one file to Shotstack (request a signed URL, PUT the bytes, then
+// poll until Shotstack has finished ingesting it) and returns the resulting
+// Shotstack-hosted URL — the only kind of URL their renderer can fetch from,
+// since our photos start out as local blobs with no public address.
+async function uploadToShotstack(blob, onProgress) {
+  const upRes = await fetch(`${FUNCTIONS_BASE}/shotstack-ingest`, { method: "POST" });
+  if (!upRes.ok) throw new Error("Impossible de préparer l'envoi");
+  const { uploadUrl, sourceId } = await upRes.json();
+
+  const putRes = await fetch(uploadUrl, { method: "PUT", body: blob });
+  if (!putRes.ok) throw new Error("Échec de l'envoi du fichier");
+
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const statusRes = await fetch(`${FUNCTIONS_BASE}/shotstack-status?type=source&id=${sourceId}`);
+    const data = await statusRes.json();
+    if (data.status === "ready") return data.url;
+    if (data.status === "failed") throw new Error("Échec du traitement du fichier");
+    onProgress?.();
+  }
+  throw new Error("Délai dépassé pendant l'envoi");
 }
 
 export async function render(container) {
@@ -18,7 +62,7 @@ export async function render(container) {
 
   container.innerHTML = `
     <h1>Réseaux sociaux</h1>
-    <p class="muted" style="margin-top:-10px">Après un chantier, ajoutez vos photos (et une vidéo si vous en avez une), laissez l'IA rédiger un texte, puis validez pour publier.</p>
+    <p class="muted" style="margin-top:-10px">Après un chantier, ajoutez vos photos (et une vidéo si vous en avez une), laissez l'IA rédiger un texte, créez le montage vidéo, puis validez pour publier.</p>
 
     <div class="card">
       <h3 style="margin-top:0">Nouvelle publication</h3>
@@ -40,22 +84,32 @@ export async function render(container) {
       <input type="file" accept="video/*" capture="environment" id="sp-video-input" style="display:none">
       <button type="button" class="btn secondary" id="sp-add-video-btn" style="margin-top:10px">🎥 Ajouter une vidéo</button>
       <div id="sp-video-status" class="muted" style="margin-top:6px;font-size:13px"></div>
-      <p class="muted" style="margin:4px 0 0;font-size:12px">La vidéo est conservée pour le montage automatique (bientôt disponible) — le texte, lui, est déjà généré à partir des photos.</p>
 
       <button type="button" class="btn block" id="sp-generate-btn" style="display:none;margin-top:14px">🤖 Générer le texte avec l'IA</button>
 
       <div id="sp-caption-zone" style="display:none;margin-top:14px">
         <label>Texte de publication (modifiable)</label>
         <textarea id="sp-caption-input" rows="6" style="width:100%"></textarea>
-        <button type="button" class="btn block" id="sp-validate-btn" style="margin-top:10px">✅ Valider cette publication</button>
       </div>
+
+      <div id="sp-montage-zone" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <label>Musique</label>
+        <select id="sp-music-select">
+          ${MUSIC_LIBRARY.map((t) => `<option value="${t.id}">${escapeHtml(t.title)}</option>`).join("")}
+        </select>
+        <button type="button" class="btn secondary block" id="sp-montage-btn" style="margin-top:10px">🎬 Créer le montage vidéo</button>
+        <p class="muted" id="sp-montage-progress" style="margin-top:8px;font-size:13px"></p>
+        <video id="sp-montage-preview" controls playsinline style="display:none;width:100%;max-width:280px;border-radius:12px;margin-top:10px"></video>
+      </div>
+
+      <button type="button" class="btn block" id="sp-validate-btn" style="display:none;margin-top:14px">✅ Valider cette publication</button>
     </div>
 
     <div class="card" style="margin-top:20px">
       <h3 style="margin-top:0">Publications précédentes</h3>
       ${posts.length === 0 ? `<p class="muted">Aucune publication pour le moment.</p>` : posts.map((p) => `
         <div style="border-top:1px solid var(--border);padding:10px 0" data-post="${p.id}">
-          <p class="muted" style="font-size:12px;margin:0 0 4px">${new Date(p.createdAt).toLocaleDateString("fr-BE", { day: "numeric", month: "long", year: "numeric" })} — ${p.status === "shared" ? "✅ partagée" : "en attente de partage"}</p>
+          <p class="muted" style="font-size:12px;margin:0 0 4px">${new Date(p.createdAt).toLocaleDateString("fr-BE", { day: "numeric", month: "long", year: "numeric" })} — ${p.status === "shared" ? "✅ partagée" : "en attente de partage"}${p.montageVideo ? " — 🎬 avec montage vidéo" : ""}</p>
           <p style="margin:0 0 8px;white-space:pre-wrap;font-size:14px">${escapeHtml(p.caption || "")}</p>
           <button type="button" class="btn secondary small sp-share-btn" data-id="${p.id}">📤 Partager</button>
         </div>
@@ -63,29 +117,36 @@ export async function render(container) {
     </div>
   `;
 
+  function refreshDraftUI() {
+    const hasMedia = photos.length > 0 || !!video;
+    container.querySelector("#sp-generate-btn").style.display = photos.length > 0 ? "" : "none";
+    container.querySelector("#sp-montage-zone").style.display = hasMedia ? "" : "none";
+    container.querySelector("#sp-validate-btn").style.display = hasMedia ? "" : "none";
+  }
+
   function renderPhotoGrid() {
     const grid = container.querySelector("#sp-photo-grid");
-    container.querySelector("#sp-generate-btn").style.display = photos.length > 0 ? "" : "none";
     if (photos.length === 0) {
       grid.innerHTML = `<p class="muted" style="margin:0">Aucune photo ajoutée.</p>`;
-      return;
-    }
-    grid.innerHTML = photos.map((p) => `
-      <div style="position:relative;width:74px;height:74px">
-        <img src="${p.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
-        <button type="button" data-remove="${p.id}" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:white;border:none;font-size:13px;line-height:1">✕</button>
-      </div>
-    `).join("");
-    grid.querySelectorAll("[data-remove]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = photos.findIndex((p) => p.id === btn.dataset.remove);
-        if (idx >= 0) {
-          URL.revokeObjectURL(photos[idx].url);
-          photos.splice(idx, 1);
-          renderPhotoGrid();
-        }
+    } else {
+      grid.innerHTML = photos.map((p) => `
+        <div style="position:relative;width:74px;height:74px">
+          <img src="${p.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">
+          <button type="button" data-remove="${p.id}" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:white;border:none;font-size:13px;line-height:1">✕</button>
+        </div>
+      `).join("");
+      grid.querySelectorAll("[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = photos.findIndex((p) => p.id === btn.dataset.remove);
+          if (idx >= 0) {
+            URL.revokeObjectURL(photos[idx].url);
+            photos.splice(idx, 1);
+            renderPhotoGrid();
+          }
+        });
       });
-    });
+    }
+    refreshDraftUI();
   }
   renderPhotoGrid();
 
@@ -154,6 +215,7 @@ export async function render(container) {
     video = file;
     const mb = (file.size / (1024 * 1024)).toFixed(1);
     videoStatus.textContent = `🎥 Vidéo ajoutée (${mb} Mo)`;
+    refreshDraftUI();
   });
 
   const generateBtn = container.querySelector("#sp-generate-btn");
@@ -189,10 +251,83 @@ export async function render(container) {
     }
   });
 
+  const montageBtn = container.querySelector("#sp-montage-btn");
+  const montageProgress = container.querySelector("#sp-montage-progress");
+  const montagePreview = container.querySelector("#sp-montage-preview");
+  montageBtn.addEventListener("click", async () => {
+    if (photos.length === 0 && !video) {
+      showToast("Ajoutez au moins une photo ou une vidéo");
+      return;
+    }
+    montageBtn.disabled = true;
+    montagePreview.style.display = "none";
+    try {
+      const photosForMontage = photos.slice(0, MAX_MONTAGE_PHOTOS);
+      const imageUrls = [];
+      for (let i = 0; i < photosForMontage.length; i++) {
+        montageProgress.textContent = `Envoi de la photo ${i + 1}/${photosForMontage.length}…`;
+        const url = await uploadToShotstack(photosForMontage[i].blob);
+        imageUrls.push(url);
+      }
+
+      let videoUrl = null;
+      let videoLength = 0;
+      if (video) {
+        montageProgress.textContent = "Envoi de la vidéo…";
+        videoUrl = await uploadToShotstack(video);
+        videoLength = await getVideoDuration(video);
+      }
+
+      montageProgress.textContent = "Assemblage du montage…";
+      const track = MUSIC_LIBRARY.find((t) => t.id === container.querySelector("#sp-music-select").value) || MUSIC_LIBRARY[0];
+      const submitRes = await fetch(`${FUNCTIONS_BASE}/shotstack-render`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          images: imageUrls,
+          video: videoUrl,
+          videoLength,
+          musicUrl: `${SITE_ORIGIN}/audio/${track.file}`,
+        }),
+      });
+      if (!submitRes.ok) throw new Error("Impossible de lancer le montage");
+      const { renderId } = await submitRes.json();
+
+      montageProgress.textContent = "Rendu en cours (peut prendre 1 à 2 minutes)…";
+      let finalUrl = null;
+      for (let i = 0; i < 90; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const statusRes = await fetch(`${FUNCTIONS_BASE}/shotstack-status?type=render&id=${renderId}`);
+        const data = await statusRes.json();
+        if (data.status === "done") {
+          finalUrl = data.url;
+          break;
+        }
+        if (data.status === "failed") throw new Error("Le montage a échoué");
+      }
+      if (!finalUrl) throw new Error("Délai dépassé pendant le rendu");
+
+      montageProgress.textContent = "Téléchargement du résultat…";
+      const videoRes = await fetch(finalUrl);
+      montageBlob = await videoRes.blob();
+      if (montageUrl) URL.revokeObjectURL(montageUrl);
+      montageUrl = URL.createObjectURL(montageBlob);
+      montagePreview.src = montageUrl;
+      montagePreview.style.display = "block";
+      montageProgress.textContent = "✅ Montage prêt (aperçu avec filigrane tant que le compte Shotstack est en mode test).";
+      showToast("Montage vidéo prêt");
+    } catch (err) {
+      montageProgress.textContent = "";
+      showToast(err.message || "Le montage vidéo a échoué, réessayez");
+    } finally {
+      montageBtn.disabled = false;
+    }
+  });
+
   container.querySelector("#sp-validate-btn").addEventListener("click", async () => {
     const caption = container.querySelector("#sp-caption-input").value.trim();
     if (!caption) {
-      showToast("Le texte est vide");
+      showToast("Générez ou écrivez d'abord un texte de publication");
       return;
     }
     if (photos.length === 0) {
@@ -205,6 +340,7 @@ export async function render(container) {
       caption,
       photos: photos.map((p) => ({ id: p.id, blob: p.blob })),
       video: video || null,
+      montageVideo: montageBlob || null,
       status: "validated",
     };
     await Store.put("socialPosts", post);
@@ -223,9 +359,10 @@ export async function render(container) {
 
 async function sharePost(post, container) {
   try {
-    const files = (post.photos || []).map(
-      (p, i) => new File([p.blob], `ecosolarnet-${i + 1}.jpg`, { type: "image/jpeg" })
-    );
+    const files = post.montageVideo
+      ? [new File([post.montageVideo], "ecosolarnet-montage.mp4", { type: "video/mp4" })]
+      : (post.photos || []).map((p, i) => new File([p.blob], `ecosolarnet-${i + 1}.jpg`, { type: "image/jpeg" }));
+
     if (navigator.canShare && navigator.canShare({ files })) {
       await navigator.share({ files, text: post.caption, title: "ECOSOLARNET" });
       await Store.put("socialPosts", { ...post, status: "shared" });
@@ -240,7 +377,7 @@ async function sharePost(post, container) {
       return;
     }
     await navigator.clipboard.writeText(post.caption);
-    showToast("Le partage direct n'est pas disponible ici — le texte a été copié, enregistrez les photos manuellement");
+    showToast("Le partage direct n'est pas disponible ici — le texte a été copié, enregistrez les photos/vidéo manuellement");
   } catch (err) {
     if (err.name !== "AbortError") showToast("Partage annulé ou impossible");
   }
