@@ -1,12 +1,11 @@
-import { Store, getSettings, saveSettings } from "../db.js";
+import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
-import { getActiveTimer, startVisit, stopVisit, onTimerEvent, startAutoWatch, stopAutoWatch, formatDuration } from "../timer.js";
+import { getActiveTimer, startVisit, stopVisit, onTimerEvent, formatDuration } from "../timer.js";
 import { wazeUrl } from "../geo.js";
 import { onDepartureEvent, fmtMinutesOfDay } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
 import { computeTips } from "../huggyTips.js";
 import { speak } from "../huggyVoice.js";
-let elapsedIntervalId = null;
 let unsubscribeTimer = null;
 let unsubscribeDeparture = null;
 
@@ -18,10 +17,6 @@ export async function render(container) {
   if (unsubscribeDeparture) {
     unsubscribeDeparture();
     unsubscribeDeparture = null;
-  }
-  if (elapsedIntervalId) {
-    clearInterval(elapsedIntervalId);
-    elapsedIntervalId = null;
   }
 
   const settings = await getSettings();
@@ -78,21 +73,12 @@ export async function render(container) {
       `).join("")}
     </div>
 
-    <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 28px">
+    <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 0">
       <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
       <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
-
-    <div class="card">
-      <div class="card-row" style="margin-bottom:8px">
-        <h3 style="margin:0">Chronomètre</h3>
-        <button type="button" class="btn secondary small" id="auto-timer-toggle-btn">📍 GPS ${settings.autoTimerEnabled ? "activé" : "désactivé"}</button>
-      </div>
-      <div id="timer-zone"></div>
-    </div>
   `;
 
-  await renderTimerZone(container);
   await updateTodayTimerButtons(container);
 
   container.querySelectorAll(".today-timer-btn").forEach((btn) => {
@@ -111,31 +97,13 @@ export async function render(container) {
       } else {
         await startVisit({ id: clientId, name: clientName }, false);
       }
-      await renderTimerZone(container);
       await updateTodayTimerButtons(container);
     });
-  });
-
-  const autoToggleBtn = container.querySelector("#auto-timer-toggle-btn");
-  autoToggleBtn.addEventListener("click", async () => {
-    const enabled = !settings.autoTimerEnabled;
-    settings.autoTimerEnabled = enabled;
-    await saveSettings({ autoTimerEnabled: enabled });
-    if (enabled) {
-      autoToggleBtn.textContent = "📍 GPS activation…";
-      await startAutoWatch();
-      showToast("Suivi GPS automatique activé");
-    } else {
-      stopAutoWatch();
-      showToast("Suivi GPS automatique désactivé");
-    }
-    autoToggleBtn.textContent = `📍 GPS ${enabled ? "activé" : "désactivé"}`;
   });
 
   unsubscribeTimer = onTimerEvent((event, data) => {
     if (event === "start" && data.auto) {
       showToast(`Chrono démarré automatiquement : ${data.clientName}`);
-      renderTimerZone(container);
       updateTodayTimerButtons(container);
     } else if (event === "stop") {
       showToast(
@@ -143,7 +111,6 @@ export async function render(container) {
           ? `Chrono arrêté automatiquement — ${formatDuration(data.durationSeconds)} chez ${data.clientName}`
           : `Temps enregistré : ${formatDuration(data.durationSeconds)}`
       );
-      renderTimerZone(container);
       updateTodayTimerButtons(container);
     } else if (event === "error") {
       showToast(data);
@@ -230,67 +197,4 @@ async function updateTodayTimerButtons(container) {
     const isActive = active && active.clientId === btn.dataset.clientId;
     btn.textContent = isActive ? "⏹️" : "⏱️";
   });
-}
-
-async function renderTimerZone(container) {
-  const zone = container.querySelector("#timer-zone");
-  if (!zone) return;
-  const active = await getActiveTimer();
-
-  if (active) {
-    zone.innerHTML = `
-      <div class="card-row">
-        <div>
-          <strong>${escapeHtml(active.clientName)}</strong>
-          <div class="muted" id="timer-elapsed">00:00:00</div>
-        </div>
-        <button class="btn danger" id="stop-timer-btn">⏹ Arrêter</button>
-      </div>
-      ${active.auto ? `<p class="muted" style="margin-top:6px">Démarré automatiquement par le GPS</p>` : ""}
-    `;
-
-    const updateElapsed = () => {
-      const el = document.getElementById("timer-elapsed");
-      if (!el) return;
-      const seconds = Math.floor((Date.now() - new Date(active.startTime).getTime()) / 1000);
-      el.textContent = formatDuration(seconds);
-    };
-    updateElapsed();
-    if (elapsedIntervalId) clearInterval(elapsedIntervalId);
-    elapsedIntervalId = setInterval(updateElapsed, 1000);
-
-    zone.querySelector("#stop-timer-btn").addEventListener("click", async () => {
-      clearInterval(elapsedIntervalId);
-      elapsedIntervalId = null;
-      const visit = await stopVisit();
-      if (visit) showToast(`Temps enregistré : ${formatDuration(visit.durationSeconds)}`);
-      await renderTimerZone(container);
-    });
-  } else {
-    if (elapsedIntervalId) {
-      clearInterval(elapsedIntervalId);
-      elapsedIntervalId = null;
-    }
-    const clients = await Store.getAll("clients");
-    clients.sort((a, b) => a.name.localeCompare(b.name));
-    zone.innerHTML = `
-      <div style="display:flex;gap:8px;align-items:flex-start">
-        <select id="timer-client-select" style="flex:1;margin-bottom:0">
-          <option value="">— Choisir un client —</option>
-          ${clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
-        </select>
-        <button class="btn" id="start-timer-btn" style="white-space:nowrap" ${clients.length === 0 ? "disabled" : ""}>▶ Démarrer</button>
-      </div>
-    `;
-    zone.querySelector("#start-timer-btn").addEventListener("click", async () => {
-      const id = zone.querySelector("#timer-client-select").value;
-      const client = clients.find((c) => c.id === id);
-      if (!client) {
-        showToast("Choisissez un client");
-        return;
-      }
-      await startVisit(client, false);
-      await renderTimerZone(container);
-    });
-  }
 }

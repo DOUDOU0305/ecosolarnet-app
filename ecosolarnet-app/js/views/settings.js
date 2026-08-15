@@ -3,6 +3,7 @@ import { geocodeAddress, fullAddress } from "../geo.js";
 import { showToast } from "../toast.js";
 import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
+import { startAutoWatch, stopAutoWatch } from "../timer.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
 import { speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
 
@@ -194,6 +195,16 @@ export async function render(container) {
       </div>
 
       <div class="card">
+        <h3 style="margin-top:0">Chronomètre automatique (GPS)</h3>
+        <p class="muted">Démarre et arrête automatiquement le chrono d'un client quand votre téléphone détecte que vous arrivez ou repartez de chez lui.</p>
+        <div class="checkbox-row">
+          <input type="checkbox" id="auto-timer-toggle" ${s.autoTimerEnabled ? "checked" : ""}>
+          <label for="auto-timer-toggle" style="margin:0;font-weight:400;color:var(--text)">Activer le suivi GPS automatique</label>
+        </div>
+        <p class="muted" id="auto-timer-status" style="margin:6px 0 0">${s.autoTimerEnabled ? "✅ Suivi GPS actif." : ""}</p>
+      </div>
+
+      <div class="card">
         <h3 style="margin-top:0">Voix de Huggy</h3>
         <p class="muted">Choisissez si Huggy vous parle avec une voix homme ou femme, et réglez la vitesse et la tonalité pour un ton plus posé. Sur iPhone, Safari ne permet malheureusement pas d'utiliser les voix "Premium" téléchargées dans les réglages du téléphone — seules les voix standard sont disponibles ici.</p>
 
@@ -314,6 +325,22 @@ export async function render(container) {
       backupStatus.textContent = "⚠️ " + (err.message || "Impossible de restaurer ce fichier.");
     } finally {
       e.target.value = "";
+    }
+  });
+
+  const autoTimerStatus = container.querySelector("#auto-timer-status");
+  container.querySelector("#auto-timer-toggle").addEventListener("change", async (e) => {
+    const enabled = e.target.checked;
+    await saveSettings({ autoTimerEnabled: enabled });
+    if (enabled) {
+      autoTimerStatus.textContent = "Activation…";
+      await startAutoWatch();
+      autoTimerStatus.textContent = "✅ Suivi GPS actif.";
+      showToast("Suivi GPS automatique activé");
+    } else {
+      stopAutoWatch();
+      autoTimerStatus.textContent = "";
+      showToast("Suivi GPS automatique désactivé");
     }
   });
 
