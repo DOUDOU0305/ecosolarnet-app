@@ -27,9 +27,9 @@ exports.handler = withCors(async function handler(event) {
     .map(([key, t]) => `- "${key}" (${t.label}) : ${t.hint || ""}`)
     .join("\n");
 
-  const systemPrompt = `Tu es l'assistant qui aide Steve Peters, gérant d'ECOSOLARNET (nettoyage de vitres, vérandas, pergolas, carports et panneaux solaires à Gerpinnes, Belgique), à préparer un devis à partir de photos prises chez un client.
+  const systemPrompt = `Tu es l'assistant qui aide Steve Peters, gérant d'ECOSOLARNET (nettoyage de vitres, vérandas, pergolas, carports, garde-corps, velux et panneaux solaires à Gerpinnes, Belgique), à préparer un devis à partir de photos prises chez un client.
 
-Regarde attentivement chaque photo et détermine quelles prestations parmi celles-ci sont visibles et pertinentes : vitres, véranda, pergola, carport, panneaux solaires.
+Regarde attentivement chaque photo et détermine quelles prestations parmi celles-ci sont visibles et pertinentes : vitres, véranda, pergola, carport, garde-corps (rambarde/balustrade en verre ou métal), velux (fenêtre de toit), panneaux solaires.
 
 Pour les vitres, si tu identifies cette prestation, choisis la catégorie de maison la plus proche parmi :
 ${tiersText}
@@ -47,18 +47,18 @@ Base ton estimation sur le nombre de fenêtres visibles, leur taille, et la cat�
 
 Pour les panneaux solaires, si tu peux compter les panneaux visibles sur la ou les photos, indique ce nombre. Si tu ne peux pas compter avec une confiance raisonnable, ne renvoie pas de nombre.
 
-Pour véranda / pergola / carport, si la prestation est visible, estime un nombre d'heures de travail raisonnable (nombre décimal, ex: 1.5) pour un nettoyage complet, en te basant sur la taille apparente.
+Pour véranda / pergola / carport / garde-corps / velux, si la prestation est visible, estime un nombre d'heures de travail raisonnable (nombre décimal, ex: 1.5) pour un nettoyage complet, en te basant sur la taille apparente et le nombre d'éléments visibles.
 
 Sois prudent : ce ne sont que des estimations à partir de photos, que Steve vérifiera et ajustera lui-même avant d'envoyer le devis. N'invente rien qui n'est pas visible sur les photos.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exact :
-{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
+{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "gardecorps": {"hours": 1}, "velux": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
 
-N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport) que si ce service apparaît dans "servicesDetected". "notes" doit toujours être rempli.`;
+N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport/gardecorps/velux) que si ce service apparaît dans "servicesDetected". "notes" doit toujours être rempli.`;
 
   const content = [
     { type: "text", text: "Voici la ou les photos prises chez le client :" },
-    ...images.slice(0, 6).map((img) => ({
+    ...images.slice(0, 4).map((img) => ({
       type: "image",
       source: { type: "base64", media_type: "image/jpeg", data: img },
     })),
@@ -74,7 +74,7 @@ N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport) que si ce
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 800,
+        max_tokens: 900,
         system: systemPrompt,
         messages: [{ role: "user", content }],
       }),
@@ -105,6 +105,8 @@ N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport) que si ce
         veranda: parsed.veranda || null,
         pergola: parsed.pergola || null,
         carport: parsed.carport || null,
+        gardecorps: parsed.gardecorps || null,
+        velux: parsed.velux || null,
         notes: typeof parsed.notes === "string" ? parsed.notes : "",
       }),
     };

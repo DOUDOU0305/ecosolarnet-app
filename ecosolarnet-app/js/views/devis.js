@@ -12,9 +12,11 @@ const SERVICE_LABELS = {
   pergola: "Nettoyage pergola",
   carport: "Nettoyage carport",
   panneaux: "Nettoyage panneaux solaires",
+  gardecorps: "Nettoyage garde-corps",
+  velux: "Nettoyage velux",
 };
 const SERVICE_ORDER = Object.keys(SERVICE_LABELS);
-const HOURLY_ONLY_TYPES = ["veranda", "pergola", "carport"];
+const HOURLY_ONLY_TYPES = ["veranda", "pergola", "carport", "gardecorps", "velux"];
 
 const STATUS_LABELS = {
   brouillon: "Brouillon",
@@ -768,12 +770,22 @@ async function renderForm(container, id) {
     analyzeBtn.textContent = "🤖 Analyse en cours…";
     aiNotesBox.style.display = "none";
     try {
+      // Netlify limite ces fonctions à 10s : au-delà de 4 photos pleine
+      // résolution, Claude met plus longtemps à répondre que ce délai. On
+      // recompresse une copie plus petite juste pour l'IA (les photos
+      // conservées dans le devis, elles, gardent leur résolution d'origine).
+      const MAX_AI_PHOTOS = 4;
+      const photosForAI = photos.slice(0, MAX_AI_PHOTOS);
       const images = await Promise.all(
-        photos.map(async (p) => {
-          const dataUrl = await blobToDataURL(p.blob);
+        photosForAI.map(async (p) => {
+          const smaller = await resizeImage(p.blob, 900, 0.65);
+          const dataUrl = await blobToDataURL(smaller);
           return dataUrl.split(",")[1];
         })
       );
+      if (photos.length > MAX_AI_PHOTOS) {
+        showToast(`Seules les ${MAX_AI_PHOTOS} premières photos sont envoyées à l'IA`);
+      }
       const res = await fetch(`${FUNCTIONS_BASE}/analyze-photos`, {
         method: "POST",
         headers: { "content-type": "application/json" },

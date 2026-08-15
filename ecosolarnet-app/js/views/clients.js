@@ -11,6 +11,8 @@ const SERVICE_LABELS = {
   pergola: "Pergola",
   carport: "Carport",
   panneaux: "Panneaux solaires",
+  gardecorps: "Garde-corps",
+  velux: "Velux",
 };
 
 const SWIPE_OPEN_X = -84;

@@ -19,6 +19,8 @@ const SERVICE_LABELS = {
   pergola: "Nettoyage pergola",
   carport: "Nettoyage carport",
   panneaux: "Nettoyage panneaux solaires",
+  gardecorps: "Nettoyage garde-corps",
+  velux: "Nettoyage velux",
 };
 
 // e.serviceTypes est le format actuel (tableau, plusieurs prestations
