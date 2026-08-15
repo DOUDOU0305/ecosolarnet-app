@@ -39,11 +39,14 @@ function getVideoDuration(file) {
 // since our photos start out as local blobs with no public address.
 async function uploadToShotstack(blob, onProgress) {
   const upRes = await fetch(`${FUNCTIONS_BASE}/shotstack-ingest`, { method: "POST" });
-  if (!upRes.ok) throw new Error("Impossible de préparer l'envoi");
+  if (!upRes.ok) {
+    const errBody = await upRes.json().catch(() => ({}));
+    throw new Error(errBody.error || `Impossible de préparer l'envoi (${upRes.status})`);
+  }
   const { uploadUrl, sourceId } = await upRes.json();
 
   const putRes = await fetch(uploadUrl, { method: "PUT", body: blob });
-  if (!putRes.ok) throw new Error("Échec de l'envoi du fichier");
+  if (!putRes.ok) throw new Error(`Échec de l'envoi du fichier (${putRes.status})`);
 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 1500));
@@ -290,7 +293,10 @@ export async function render(container) {
           musicUrl: `${SITE_ORIGIN}/audio/${track.file}`,
         }),
       });
-      if (!submitRes.ok) throw new Error("Impossible de lancer le montage");
+      if (!submitRes.ok) {
+        const errBody = await submitRes.json().catch(() => ({}));
+        throw new Error(errBody.error || `Impossible de lancer le montage (${submitRes.status})`);
+      }
       const { renderId } = await submitRes.json();
 
       montageProgress.textContent = "Rendu en cours (peut prendre 1 à 2 minutes)…";
