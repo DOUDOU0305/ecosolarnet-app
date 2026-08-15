@@ -2,6 +2,7 @@ const ITEMS = [
   { route: "waitlist", icon: "⏳", label: "Liste d'attente" },
   { route: "emails", icon: "✉️", label: "Emails" },
   { route: "whatsapp", icon: "💬", label: "WhatsApp" },
+  { route: "socialpost", icon: "📣", label: "Réseaux sociaux" },
   { route: "qrcodes", icon: "🔳", label: "QR Code" },
   { route: "assistant", icon: "🎙️", label: "Assistant" },
   { route: "reminders", icon: "📝", label: "Rappels" },
