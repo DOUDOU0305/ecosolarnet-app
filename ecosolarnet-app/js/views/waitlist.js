@@ -170,9 +170,11 @@ function renderProposal(container, month, entries, proposedDates) {
       <h2 style="margin-top:0;text-transform:capitalize">Proposition — ${monthLabel(month)}</h2>
       <p class="muted">Vérifiez les dates proposées et ajustez si besoin. Laissez une date vide pour reporter ce client au mois suivant.</p>
       ${unplacedCount > 0 ? `<p class="muted">⚠️ ${unplacedCount} client(s) ne rentrent pas dans les jours libres de ce mois — reportés automatiquement si vous ne leur donnez pas de date.</p>` : ""}
+      <p class="muted" style="font-size:12px">Décochez un client pour le laisser de côté cette fois (il reste en liste d'attente, inchangé).</p>
       ${sorted.map((e) => `
         <div class="list-item">
-          <div>
+          <input type="checkbox" class="proposal-include" data-entry="${e.id}" checked style="width:20px;height:20px;flex:none;margin-right:4px;accent-color:var(--teal)">
+          <div style="flex:1">
             <strong>${escapeHtml(e.name)}</strong>
             <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
           </div>
@@ -207,9 +209,14 @@ async function validateProposal(container, month, entries, zone) {
   dateInputs.forEach((inp) => {
     finalDates[inp.dataset.entry] = inp.value || null;
   });
+  const includedIds = new Set(
+    [...zone.querySelectorAll(".proposal-include")].filter((cb) => cb.checked).map((cb) => cb.dataset.entry)
+  );
+  const includedEntries = entries.filter((e) => includedIds.has(e.id));
+  const skippedCount = entries.length - includedEntries.length;
 
   const byDate = {};
-  for (const e of entries) {
+  for (const e of includedEntries) {
     const date = finalDates[e.id];
     if (!date) continue;
     if (!byDate[date]) byDate[date] = [];
@@ -263,12 +270,16 @@ async function validateProposal(container, month, entries, zone) {
     }
   }
 
-  const unplaced = entries.filter((e) => !finalDates[e.id]);
+  const unplaced = includedEntries.filter((e) => !finalDates[e.id]);
   for (const e of unplaced) {
     await Store.put("waitlist", { ...e, targetMonth: nextMonthStr(month) });
   }
 
-  showToast(`Planning validé : ${dates.length} jour(s) programmé(s)${unplaced.length ? `, ${unplaced.length} reporté(s) au mois suivant` : ""}`);
+  showToast(
+    `Planning validé : ${dates.length} jour(s) programmé(s)` +
+      `${unplaced.length ? `, ${unplaced.length} reporté(s) au mois suivant` : ""}` +
+      `${skippedCount ? `, ${skippedCount} laissé(s) de côté` : ""}`
+  );
   zone.innerHTML = "";
   await renderList(container);
 }
