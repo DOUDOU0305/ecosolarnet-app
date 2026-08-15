@@ -34,13 +34,15 @@ exports.handler = withCors(async function handler(event) {
     // The Ingest API (source upload status) uses a JSON:API-style envelope
     // (data.attributes); the Edit/Render API uses a different, older shape
     // (response.*) — these are genuinely two separate Shotstack APIs, not an
-    // inconsistency in this code.
+    // inconsistency in this code. They also name the output link differently:
+    // ingest sources expose it as "source", renders expose it as "url".
     const attrs = type === "source" ? data.data?.attributes || {} : data.response || {};
+    const outputUrl = type === "source" ? attrs.source : attrs.url;
     return {
       statusCode: 200,
       body: JSON.stringify({
         status: attrs.status || "unknown",
-        url: attrs.url || null,
+        url: outputUrl || null,
         error: attrs.error || null,
       }),
     };
