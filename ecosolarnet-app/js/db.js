@@ -64,9 +64,14 @@ export const Store = {
     });
   },
 
-  async put(storeName, record) {
+  async put(storeName, record, { preserveSyncedAt = false } = {}) {
     if (!record.id) record.id = uid();
-    if (!record._syncedAt) record._syncedAt = Date.now();
+    // Stamped fresh on every local write (not just creation) so that
+    // "last write wins" comparisons across devices actually reflect which
+    // edit happened most recently. Only the sync layer, when applying a
+    // write that came FROM the other device, opts out via preserveSyncedAt
+    // so it doesn't overwrite that device's original timestamp with "now".
+    if (!preserveSyncedAt) record._syncedAt = Date.now();
     const store = await tx(storeName, "readwrite");
     return new Promise((resolve, reject) => {
       const req = store.put(record);

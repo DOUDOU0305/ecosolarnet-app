@@ -1,4 +1,4 @@
-const CACHE_NAME = "ecosolarnet-v78";
+const CACHE_NAME = "ecosolarnet-v79";
 const APP_SHELL = [
   "./",
   "./index.html",

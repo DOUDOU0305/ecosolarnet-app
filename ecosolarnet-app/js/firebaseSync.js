@@ -25,7 +25,12 @@ const SYNCED_STORES = [
 const BOOTSTRAP_KEY = "ecosolarnet_sync_bootstrapped_v1";
 
 let db = null;
-let applyingRemote = false;
+// Per-record (not global) so that applying an incoming remote write for one
+// record can't suppress the push of an unrelated local edit made to a
+// different record at the same moment — a global flag here previously
+// caused local edits to be silently dropped from sync under exactly that
+// kind of overlap.
+const applyingRemoteKeys = new Set();
 let readyResolve;
 const ready = new Promise((resolve) => {
   readyResolve = resolve;
@@ -69,21 +74,23 @@ async function deleteFromFirestore(storeName, id) {
 async function applyRemoteWrite(storeName, data) {
   const local = await Store.get(storeName, data.id);
   if (local && local._syncedAt && data._syncedAt && local._syncedAt > data._syncedAt) return;
-  applyingRemote = true;
+  const key = `${storeName}:${data.id}`;
+  applyingRemoteKeys.add(key);
   try {
-    await Store.put(storeName, data);
+    await Store.put(storeName, data, { preserveSyncedAt: true });
   } finally {
-    applyingRemote = false;
+    applyingRemoteKeys.delete(key);
   }
   window.dispatchEvent(new CustomEvent("ecosolarnet:sync"));
 }
 
 async function applyRemoteDelete(storeName, id) {
-  applyingRemote = true;
+  const key = `${storeName}:${id}`;
+  applyingRemoteKeys.add(key);
   try {
     await Store.delete(storeName, id);
   } finally {
-    applyingRemote = false;
+    applyingRemoteKeys.delete(key);
   }
   window.dispatchEvent(new CustomEvent("ecosolarnet:sync"));
 }
@@ -106,12 +113,12 @@ async function bootstrapIfNeeded() {
 export function installSyncHooks() {
   if (!FIREBASE_CONFIGURED) return;
   onStoreWrite(async (storeName, record) => {
-    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
+    if (!SYNCED_STORES.includes(storeName) || applyingRemoteKeys.has(`${storeName}:${record.id}`)) return;
     await ready;
     pushToFirestore(storeName, record);
   });
   onStoreDelete(async (storeName, id) => {
-    if (!SYNCED_STORES.includes(storeName) || applyingRemote) return;
+    if (!SYNCED_STORES.includes(storeName) || applyingRemoteKeys.has(`${storeName}:${id}`)) return;
     await ready;
     deleteFromFirestore(storeName, id);
   });
