@@ -96,6 +96,7 @@ export async function render(container) {
       </div>
 
       <div id="sp-montage-zone" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <p class="muted" style="margin:0 0 10px;font-size:12px">Astuce : 4 à 6 photos (avant/après, différents angles) donnent une vidéo plus longue et plus accrocheuse — chaque photo reste 5 secondes à l'écran.</p>
         <label>Musique</label>
         <select id="sp-music-select">
           ${MUSIC_LIBRARY.map((t) => `<option value="${t.id}">${escapeHtml(t.title)}</option>`).join("")}

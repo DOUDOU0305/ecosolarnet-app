@@ -5,8 +5,8 @@ function editBase() {
   return `https://api.shotstack.io/edit/${env}`;
 }
 
-const PHOTO_CLIP_SECONDS = 3;
-const MAX_VIDEO_SECONDS = 8;
+const PHOTO_CLIP_SECONDS = 5;
+const MAX_VIDEO_SECONDS = 12;
 
 exports.handler = withCors(async function handler(event) {
   if (event.httpMethod !== "POST") {
