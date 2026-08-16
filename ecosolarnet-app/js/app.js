@@ -18,6 +18,7 @@ import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
 import { refreshVoiceSettingsCache } from "./huggyVoice.js";
 import { cleanupSwipe as cleanupCalendarSwipe } from "./views/calendar.js";
+import { cleanupHandsFree } from "./views/assistant.js";
 import { installSyncHooks, startFirebaseSync } from "./firebaseSync.js";
 
 installSyncHooks();
@@ -69,6 +70,7 @@ async function renderRoute() {
 
   viewEl.scrollTop = 0;
   cleanupCalendarSwipe(viewEl);
+  cleanupHandsFree();
   try {
     await mod.render(viewEl, id ? { id } : undefined);
   } catch (err) {

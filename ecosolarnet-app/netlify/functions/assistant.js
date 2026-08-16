@@ -12,7 +12,7 @@ exports.handler = withCors(async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
-  const { message = "", clients = [], todayDate = "", companyName = "ECOSOLARNET" } = payload;
+  const { message = "", clients = [], todayDate = "", companyName = "ECOSOLARNET", recentCorrections = [] } = payload;
   const ownerName = "Steve Peters";
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -21,6 +21,16 @@ exports.handler = withCors(async function handler(event) {
   }
 
   const clientListText = clients.length > 0 ? clients.map((c) => `- ${c.name}`).join("\n") : "(aucun client enregistré pour l'instant)";
+
+  // Alimenté par le bouton "❌ Ce n'est pas ça" dans l'appli : à chaque fois
+  // que Steve corrige une réponse, la correction est renvoyée ici lors des
+  // appels suivants, pour que les mêmes malentendus (mots mal transcrits,
+  // clients confondus...) ne se reproduisent pas.
+  const correctionsText = recentCorrections.length > 0
+    ? recentCorrections
+        .map((c) => `- Quand Steve a dit "${c.originalMessage}", tu as répondu "${c.wrongReply}" ce qui était faux — ce qu'il voulait vraiment dire : "${c.correction}"`)
+        .join("\n")
+    : "";
 
   const systemPrompt = `Tu es l'assistant vocal intégré à l'application professionnelle de ${ownerName}, qui gère "${companyName}", entreprise de nettoyage de vitres, vérandas, pergolas, carports et panneaux solaires à Gerpinnes, en Belgique. Aujourd'hui nous sommes le ${todayDate}.
 
@@ -35,7 +45,7 @@ ${clientListText}
 - "add_idea" : il vient d'avoir une idée et veut la noter (souvent introduit par "je viens d'avoir une idée", "prends note", "note ça"...). Retranscris fidèlement l'idée dictée dans "ideaText", en corrigeant seulement les fautes de transcription évidentes, sans reformuler le fond.
 - "general_question" : toute autre question ou demande de conversation générale. Réponds-y directement et brièvement en français. Si la question nécessite une information en temps réel que tu n'as pas (météo actuelle, horaires d'ouverture réels, position géographique...), dis-le clairement plutôt que d'inventer une réponse.
 - "unclear" : tu ne comprends pas ce qui est demandé, ou il manque des informations essentielles (par exemple "schedule_appointment" sans nom de client identifiable). Dans ce cas, "reply" doit être une question de clarification courte.
-
+${correctionsText ? `\nCorrections récentes de Steve — évite de refaire ces erreurs si une nouvelle demande y ressemble :\n${correctionsText}\n` : ""}
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
 {"intent": "add_client|schedule_appointment|add_reminder|add_idea|general_question|unclear", "reply": "phrase courte à dire/afficher à Steve pour confirmer ou répondre", "client": {"name": "", "address": "", "postalCode": "", "city": "", "phone": ""}, "appointment": {"clientName": "", "date": "", "time": ""}, "reminderText": "", "ideaText": ""}
 
