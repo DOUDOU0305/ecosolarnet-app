@@ -1,6 +1,6 @@
 import { getSettings } from "./db.js";
 
-function isNative() {
+export function isNative() {
   return typeof window !== "undefined" && !!window.Capacitor?.isNativePlatform?.();
 }
 

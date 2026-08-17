@@ -5,7 +5,7 @@ import { generateQrDataUrl } from "../qrcode.js";
 import { startDepartureReminders, stopDepartureReminders, requestNotificationPermission } from "../departureReminder.js";
 import { startAutoWatch, stopAutoWatch } from "../timer.js";
 import { exportBackup, importBackupFromFile } from "../backup.js";
-import { speak, refreshVoiceSettingsCache } from "../huggyVoice.js";
+import { speak, refreshVoiceSettingsCache, isNative } from "../huggyVoice.js";
 
 function tierFieldsHtml(key, t) {
   if (key === "tresGrande") {
@@ -206,7 +206,7 @@ export async function render(container) {
 
       <div class="card">
         <h3 style="margin-top:0">Voix de Huggy</h3>
-        <p class="muted">Choisissez si Huggy vous parle avec une voix homme ou femme, et réglez la vitesse et la tonalité pour un ton plus posé. Sur iPhone, Safari ne permet malheureusement pas d'utiliser les voix "Premium" téléchargées dans les réglages du téléphone — seules les voix standard sont disponibles ici.</p>
+        <p class="muted">Choisissez si Huggy vous parle avec une voix homme ou femme, et réglez la vitesse et la tonalité pour un ton plus posé. ${isNative() ? "Si vous avez téléchargé une voix « Améliorée » ou « Premium » dans Réglages iPhone → Accessibilité → Contenu énoncé → Voix, elle est utilisée automatiquement ici." : "Seules les voix standard sont disponibles dans cette version web — les voix « Premium » téléchargées dans les réglages du téléphone ne fonctionnent que dans l'app installée."}</p>
 
         <div class="field">
           <label>Voix utilisée</label>
