@@ -100,6 +100,7 @@ function regionPillClass(region) {
 
 let unlocked = false;
 let idleTimer = null;
+let searchQuery = "";
 
 export async function render(container, params) {
   if (params && params.id) {
@@ -107,20 +108,25 @@ export async function render(container, params) {
     return renderForm(container, params.id === "new" ? null : params.id);
   }
   unlocked = false;
+  searchQuery = "";
   return renderList(container);
+}
+
+function stripAccents(str) {
+  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function matchesSearch(client, query) {
+  if (!query) return true;
+  const needle = stripAccents(query.toLowerCase()).trim();
+  const haystack = stripAccents((client.name || "").toLowerCase());
+  return haystack.includes(needle);
 }
 
 async function renderList(container) {
   const clients = await Store.getAll("clients");
   clients.sort((a, b) => a.name.localeCompare(b.name));
   const visits = await Store.getAll("visits");
-
-  function avgDurationFor(clientId) {
-    const list = visits.filter((v) => v.clientId === clientId);
-    if (list.length === 0) return null;
-    const avg = list.reduce((s, v) => s + v.durationSeconds, 0) / list.length;
-    return { avg, count: list.length };
-  }
 
   const showReal = unlocked || clients.length === 0;
 
@@ -132,46 +138,81 @@ async function renderList(container) {
         <div class="label">Clients</div>
       </div>
     </div>
-    ${!showReal ? `
-      <div class="empty-state">
-        <div class="big">👤</div>
-        <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
+    ${showReal && clients.length > 0 ? `
+      <div class="field">
+        <input type="search" id="clients-search-input" placeholder="🔍 Rechercher un client par nom…" value="${escapeHtml(searchQuery)}" autocapitalize="words" autocorrect="off">
       </div>
-    ` : clients.length === 0 ? `
-      <div class="empty-state">
-        <div class="big">👤</div>
-        <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
-      </div>
-    ` : `
-      <div class="card">
-        ${clients.map((c) => {
-          const t = avgDurationFor(c.id);
-          return `
-          <div class="list-item" data-id="${c.id}">
-            <div>
-              <div><strong>${escapeHtml(c.name)}</strong></div>
-              <div class="muted">${escapeHtml(c.postalCode)} ${escapeHtml(c.city)}</div>
-              <div style="margin-top:4px">
-                <span class="pill ${regionPillClass(classifyRegion(c.postalCode))}">${escapeHtml(c.city)}</span>
-                ${(c.serviceTypes || []).map((s) => `<span class="pill" style="margin-left:4px">${SERVICE_LABELS[s] || s}</span>`).join("")}
-              </div>
-            </div>
-            <div style="text-align:right">
-              <span style="color:var(--text-muted)">›</span>
-              ${t ? `<div class="muted" style="font-size:11px;margin-top:4px">⏱ ${formatDuration(t.avg).slice(0, 5)}</div>` : ""}
-            </div>
-          </div>
-        `;
-        }).join("")}
-      </div>
-    `}
+    ` : ""}
+    <div id="clients-list-zone"></div>
   `;
 
-  container.querySelectorAll(".list-item").forEach((el) => {
-    el.addEventListener("click", () => {
-      location.hash = `#/clients/${el.dataset.id}`;
+  function avgDurationFor(clientId) {
+    const list = visits.filter((v) => v.clientId === clientId);
+    if (list.length === 0) return null;
+    const avg = list.reduce((s, v) => s + v.durationSeconds, 0) / list.length;
+    return { avg, count: list.length };
+  }
+
+  function renderRows() {
+    const zone = container.querySelector("#clients-list-zone");
+    if (!zone) return;
+    const filtered = clients.filter((c) => matchesSearch(c, searchQuery));
+
+    if (!showReal || clients.length === 0) {
+      zone.innerHTML = `
+        <div class="empty-state">
+          <div class="big">👤</div>
+          <p>Aucun client pour l'instant.<br>Maintenez le doigt sur "Clients" en bas de l'écran pour en ajouter un.</p>
+        </div>
+      `;
+    } else if (filtered.length === 0) {
+      zone.innerHTML = `
+        <div class="empty-state">
+          <div class="big">🔍</div>
+          <p>Aucun client ne correspond à "${escapeHtml(searchQuery)}".</p>
+        </div>
+      `;
+    } else {
+      zone.innerHTML = `
+        <div class="card">
+          ${filtered.map((c) => {
+            const t = avgDurationFor(c.id);
+            return `
+            <div class="list-item" data-id="${c.id}">
+              <div>
+                <div><strong>${escapeHtml(c.name)}</strong></div>
+                <div class="muted">${escapeHtml(c.postalCode)} ${escapeHtml(c.city)}</div>
+                <div style="margin-top:4px">
+                  <span class="pill ${regionPillClass(classifyRegion(c.postalCode))}">${escapeHtml(c.city)}</span>
+                  ${(c.serviceTypes || []).map((s) => `<span class="pill" style="margin-left:4px">${SERVICE_LABELS[s] || s}</span>`).join("")}
+                </div>
+              </div>
+              <div style="text-align:right">
+                <span style="color:var(--text-muted)">›</span>
+                ${t ? `<div class="muted" style="font-size:11px;margin-top:4px">⏱ ${formatDuration(t.avg).slice(0, 5)}</div>` : ""}
+              </div>
+            </div>
+          `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    zone.querySelectorAll(".list-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        location.hash = `#/clients/${el.dataset.id}`;
+      });
     });
-  });
+  }
+  renderRows();
+
+  const searchInput = container.querySelector("#clients-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value;
+      renderRows();
+    });
+  }
 
   wireLock(container);
 }
