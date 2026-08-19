@@ -72,6 +72,27 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
   }
 }
 
+// Même message convient pour vitres, vérandas, corniches et panneaux
+// solaires (confirmé par Steve) — pas besoin de distinguer par service.
+async function sendWhatsAppReply(to, body) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_WHATSAPP_NUMBER;
+  if (!accountSid || !authToken || !fromNumber) throw new Error("Configuration Twilio manquante");
+
+  const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  const params = new URLSearchParams({ From: fromNumber, To: to, Body: body });
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${basicAuth}`, "content-type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Erreur Twilio");
+  }
+}
+
 // Twilio posts application/x-www-form-urlencoded, not JSON, for WhatsApp webhooks.
 exports.handler = withCors(async function handler(event) {
   if (event.httpMethod !== "POST") {
@@ -84,7 +105,6 @@ exports.handler = withCors(async function handler(event) {
   const profileName = params.get("ProfileName") || "";
 
   const { category, reply } = await classifyMessage(body);
-  const draftReply = category === "devis" ? AUTO_DEVIS_REPLY : reply;
 
   const id = uid();
   try {
@@ -99,13 +119,47 @@ exports.handler = withCors(async function handler(event) {
         direction: "incoming",
         _syncedAt: Date.now(),
       });
+    } else if (category === "devis") {
+      // Envoyé directement, sans validation — Steve l'a explicitement demandé
+      // pour ce cas précis (message générique, sans risque puisqu'il ne
+      // chiffre ni n'engage à rien). Si l'envoi Twilio échoue pour une
+      // raison quelconque, on retombe sur un brouillon à valider plutôt que
+      // de perdre la demande.
+      try {
+        await sendWhatsAppReply(from, AUTO_DEVIS_REPLY);
+        await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/whatsappMessages/${id}`, {
+          id,
+          from,
+          profileName,
+          body,
+          draftReply: AUTO_DEVIS_REPLY,
+          status: "sent",
+          sentBody: AUTO_DEVIS_REPLY,
+          sentAt: Date.now(),
+          sentAuto: true,
+          direction: "incoming",
+          _syncedAt: Date.now(),
+        });
+      } catch (sendErr) {
+        console.error("Auto-send failed", sendErr);
+        await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/whatsappMessages/${id}`, {
+          id,
+          from,
+          profileName,
+          body,
+          draftReply: AUTO_DEVIS_REPLY,
+          status: "pending",
+          direction: "incoming",
+          _syncedAt: Date.now(),
+        });
+      }
     } else {
       await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/whatsappMessages/${id}`, {
         id,
         from,
         profileName,
         body,
-        draftReply,
+        draftReply: reply,
         status: "pending",
         direction: "incoming",
         _syncedAt: Date.now(),

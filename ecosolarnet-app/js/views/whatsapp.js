@@ -10,7 +10,7 @@ export async function render(container) {
 
   container.innerHTML = `
     <h1>WhatsApp</h1>
-    <p class="muted" style="margin-top:-10px">Les messages reçus sur le bac à sable WhatsApp arrivent ici avec un brouillon de réponse. Relisez, modifiez si besoin, puis envoyez.</p>
+    <p class="muted" style="margin-top:-10px">Les demandes de devis reçoivent une réponse automatique. Les autres messages arrivent ici avec un brouillon — relisez, modifiez si besoin, puis envoyez.</p>
 
     ${pending.length === 0 ? `
       <div class="empty-state">
@@ -38,7 +38,7 @@ export async function render(container) {
       <div class="card">
         ${handled.slice(0, 15).map((m) => `
           <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-            <p class="muted" style="font-size:12px;margin:0">${escapeHtml(m.profileName || m.from || "")} — ${m.status === "sent" ? "✅ envoyé" : "ignoré"}</p>
+            <p class="muted" style="font-size:12px;margin:0">${escapeHtml(m.profileName || m.from || "")} — ${m.status === "sent" ? (m.sentAuto ? "🤖 envoyé automatiquement" : "✅ envoyé") : "ignoré"}</p>
             <p style="margin:2px 0 0;font-size:14px">${escapeHtml(m.body || "")}</p>
           </div>
         `).join("")}

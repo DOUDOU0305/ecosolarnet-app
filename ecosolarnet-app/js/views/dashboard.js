@@ -21,9 +21,12 @@ export async function computeBriefing(todayStr = new Date().toISOString().slice(
   const emails = await Store.getAll("processedEmails");
   const whatsapp = await Store.getAll("whatsappMessages");
 
+  const devisAutoEmailsToday = emails.filter((e) => e.decision === "auto_replied" && isSameDay(e.processedAt, todayStr)).length;
+  const devisAutoWhatsappToday = whatsapp.filter((m) => m.sentAuto && isSameDay(m.sentAt, todayStr)).length;
+
   return {
     spamToday: emails.filter((e) => e.decision === "trashed" && isSameDay(e.processedAt, todayStr)).length,
-    devisAutoToday: emails.filter((e) => e.decision === "auto_replied" && isSameDay(e.processedAt, todayStr)).length,
+    devisAutoToday: devisAutoEmailsToday + devisAutoWhatsappToday,
     emailsPending: emails.filter((e) => e.decision === "pending").length,
     whatsappPending: whatsapp.filter((m) => m.status === "pending").length,
   };
