@@ -2,6 +2,8 @@ import { Store } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { FUNCTIONS_BASE } from "../config.js";
 
+let selectMode = false;
+
 export async function render(container) {
   const all = await Store.getAll("whatsappMessages");
   all.sort((a, b) => (b._syncedAt || 0) - (a._syncedAt || 0));
@@ -34,12 +36,21 @@ export async function render(container) {
     `}
 
     ${handled.length > 0 ? `
-      <p class="muted" style="font-size:12px;margin-top:16px">Traités récemment</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px">
+        <p class="muted" style="font-size:12px;margin:0">Traités récemment</p>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${selectMode ? `<button type="button" class="btn secondary small" id="wa-delete-selected-btn" style="color:var(--danger)">🗑️</button>` : ""}
+          <button type="button" class="btn secondary small" id="wa-select-toggle-btn">${selectMode ? "Terminé" : "Sélectionner"}</button>
+        </div>
+      </div>
       <div class="card">
-        ${handled.slice(0, 15).map((m) => `
-          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-            <p class="muted" style="font-size:12px;margin:0">${escapeHtml(m.profileName || m.from || "")} — ${m.status === "sent" ? (m.sentAuto ? "🤖 envoyé automatiquement" : "✅ envoyé") : "ignoré"}</p>
-            <p style="margin:2px 0 0;font-size:14px">${escapeHtml(m.body || "")}</p>
+        ${handled.map((m) => `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
+            ${selectMode ? `<input type="checkbox" class="wa-handled-check" data-id="${m.id}" style="width:20px;height:20px;flex:none;margin-top:2px;accent-color:var(--teal)">` : ""}
+            <div style="flex:1;min-width:0">
+              <p class="muted" style="font-size:12px;margin:0">${escapeHtml(m.profileName || m.from || "")} — ${m.status === "sent" ? (m.sentAuto ? "🤖 envoyé automatiquement" : "✅ envoyé") : "ignoré"}</p>
+              <p style="margin:2px 0 0;font-size:14px">${escapeHtml(m.body || "")}</p>
+            </div>
           </div>
         `).join("")}
       </div>
@@ -90,5 +101,25 @@ export async function render(container) {
       showToast("Message ignoré");
       render(container);
     });
+  });
+
+  container.querySelector("#wa-select-toggle-btn")?.addEventListener("click", () => {
+    selectMode = !selectMode;
+    render(container);
+  });
+
+  container.querySelector("#wa-delete-selected-btn")?.addEventListener("click", async () => {
+    const checks = container.querySelectorAll(".wa-handled-check");
+    const ids = Array.from(checks).filter((c) => c.checked).map((c) => c.dataset.id);
+    if (ids.length === 0) {
+      showToast("Cochez au moins une ligne à supprimer");
+      return;
+    }
+    for (const id of ids) {
+      await Store.delete("whatsappMessages", id);
+    }
+    showToast(`${ids.length} message${ids.length > 1 ? "s" : ""} supprimé${ids.length > 1 ? "s" : ""}`);
+    selectMode = false;
+    render(container);
   });
 }

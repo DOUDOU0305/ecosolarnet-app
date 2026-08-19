@@ -69,7 +69,8 @@ async function paint(container) {
           <div class="list-item">
             <div style="flex:1;min-width:0;margin-right:10px">
               <strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.subject || "(sans sujet)")}</strong>
-              <span class="muted" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.from || "")}</span>
+              <span class="muted" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Reçu de : ${escapeHtml(e.from || "")}</span>
+              ${e.repliedTo && e.repliedTo !== e.from ? `<span class="muted" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Répondu à : ${escapeHtml(e.repliedTo)}</span>` : ""}
             </div>
           </div>
         `).join("")}
@@ -292,10 +293,16 @@ async function runScan(container) {
             processedAt: Date.now(),
           });
         } else if (result.category === "devis") {
+          // Les demandes venant du formulaire "Contact & Devis" du site web
+          // arrivent comme une notification envoyée PAR le site lui-même —
+          // "De :" pointe alors vers le site, pas vers le client. Dans ce
+          // cas, classify-email.js a extrait la vraie adresse du client
+          // depuis le texte du message ; sinon on répond normalement à "De :".
+          const replyTo = result.replyToEmail || full.from;
           try {
             await sendReply(token, {
               threadId: full.threadId,
-              to: full.from,
+              to: replyTo,
               subject: full.subject,
               body: AUTO_DEVIS_REPLY,
               messageIdHeader: full.messageIdHeader,
@@ -306,6 +313,7 @@ async function runScan(container) {
               threadId: full.threadId,
               subject: full.subject,
               from: full.from,
+              repliedTo: replyTo,
               category: "devis",
               reply: AUTO_DEVIS_REPLY,
               decision: "auto_replied",

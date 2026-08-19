@@ -24,6 +24,8 @@ exports.handler = withCors(async function handler(event) {
 
 Tu reçois le contenu d'un email arrivé dans sa boîte professionnelle. Ta tâche :
 
+0. Détermine l'adresse à laquelle une réponse doit réellement être envoyée. La plupart du temps c'est l'expéditeur ("De :") lui-même. MAIS le site web de ${ownerName} envoie parfois une notification automatique du formulaire "Contact & Devis" — dans ce cas, "De :" est l'adresse du site lui-même (souvent un nom comme "Ecosolarnet - ..." ou une adresse générique liée au site), et le VRAI email du client à qui répondre est écrit à l'intérieur du texte du message (souvent après "Votre Email :", "Email :", "Adresse mail :" ou une formulation équivalente). Si tu identifies clairement ce cas, mets cette adresse extraite dans "replyToEmail". Sinon, laisse "replyToEmail" à null (la réponse partira alors normalement vers "De :").
+
 1. Classe l'email dans une seule de ces catégories :
    - "spam" : publicité, arnaque, phishing, newsletter non sollicitée, prospection commerciale non liée au métier
    - "devis" : le client demande un prix ou un devis pour une prestation
@@ -58,7 +60,7 @@ Tu reçois le contenu d'un email arrivé dans sa boîte professionnelle. Ta tâc
    - Reste concis sur le fond (pas de liste de questions techniques : surface, type de vitrage, accès, etc.), mais soigné sur la forme (paragraphes courts et aérés).
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de la forme :
-{"category": "spam|devis|rendezvous|renseignement|autre", "reply": "texte du brouillon ou chaîne vide si non applicable"}`;
+{"category": "spam|devis|rendezvous|renseignement|autre", "reply": "texte du brouillon ou chaîne vide si non applicable", "replyToEmail": "adresse extraite du texte ou null"}`;
 
   const userContent = `De : ${from}\n${cc ? `Cc : ${cc}\n` : ""}Sujet : ${subject}\n\nContenu :\n${String(body).slice(0, 4000)}`;
 
@@ -97,10 +99,14 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de la forme :
     const validCategories = ["spam", "devis", "rendezvous", "renseignement", "autre"];
     const category = validCategories.includes(parsed.category) ? parsed.category : "autre";
     const reply = typeof parsed.reply === "string" ? parsed.reply : "";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const replyToEmail = typeof parsed.replyToEmail === "string" && emailRegex.test(parsed.replyToEmail.trim())
+      ? parsed.replyToEmail.trim()
+      : null;
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ category, reply }),
+      body: JSON.stringify({ category, reply, replyToEmail }),
     };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message || "Erreur inconnue" }) };
