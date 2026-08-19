@@ -1,4 +1,5 @@
 const ITEMS = [
+  { route: `planning/year-${new Date().getFullYear()}`, icon: "📅", label: "Agenda" },
   { route: "waitlist", icon: "⏳", label: "Liste d'attente" },
   { route: "emails", icon: "✉️", label: "Emails" },
   { route: "whatsapp", icon: "💬", label: "WhatsApp" },
@@ -6,7 +7,6 @@ const ITEMS = [
   { route: "qrcodes", icon: "🔳", label: "QR Code" },
   { route: "assistant", icon: "🎙️", label: "Assistant" },
   { route: "reminders", icon: "📝", label: "Rappels" },
-  { route: "ideas", icon: "💡", label: "Idées" },
   { route: "settings", icon: "⚙️", label: "Réglages" },
 ];
 

@@ -98,6 +98,22 @@ export const Store = {
 
 export { uid };
 
+// La liste "Idées" a été fusionnée dans "Rappels" (2026-08-19) : les deux
+// listes se recoupaient trop. Fait passer discrètement tout ce qui restait
+// dans "ideas" vers "reminders" au démarrage, sans rien perdre. Idempotent :
+// une fois "ideas" vide, ça ne fait plus rien.
+export async function migrateIdeasIntoReminders() {
+  const ideas = await Store.getAll("ideas");
+  for (const idea of ideas) {
+    // Réutilise le même id que l'idée d'origine (au lieu d'en générer un
+    // nouveau) : si les deux téléphones de Steve migrent chacun leur propre
+    // copie locale de la même idée synchronisée, ça retombe sur le même
+    // rappel plutôt que de créer un doublon sur chaque appareil.
+    await Store.put("reminders", { id: idea.id, text: idea.text, done: false, createdAt: idea.createdAt });
+    await Store.delete("ideas", idea.id);
+  }
+}
+
 export const DEFAULT_SETTINGS = {
   id: "main",
   companyName: "ECOSOLARNET",

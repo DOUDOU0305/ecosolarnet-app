@@ -11,6 +11,19 @@ const CATEGORY_LABELS = {
   renseignement: "Demande de renseignement",
 };
 
+// Réponse fixe (pas générée par l'IA) envoyée automatiquement, sans
+// validation, à toute demande de devis — texte exact validé par Steve. Le
+// but est juste de récolter les coordonnées du client ; l'IA n'a pas la main
+// ici pour éviter le moindre risque de mauvaise réponse envoyée sans
+// relecture. Les demandes de rendez-vous et de renseignement restent, elles,
+// de simples brouillons à valider.
+const AUTO_DEVIS_REPLY = `Bonjour,
+
+J'ai bien reçu votre demande de devis et vous en remercie. J'aurais besoin de votre nom, prénom, mail, adresse où aura lieu le nettoyage. Je reviens au plus vite vers vous.
+
+Bien à vous,
+Steve PETERS`;
+
 let busy = false;
 
 export async function render(container) {
@@ -22,6 +35,7 @@ async function paint(container) {
   const all = await Store.getAll("processedEmails");
   const trashed = all.filter((e) => e.decision === "trashed").sort((a, b) => b.processedAt - a.processedAt).slice(0, 15);
   const pending = all.filter((e) => e.decision === "pending").sort((a, b) => b.processedAt - a.processedAt);
+  const autoReplied = all.filter((e) => e.decision === "auto_replied").sort((a, b) => b.processedAt - a.processedAt).slice(0, 15);
 
   container.innerHTML = `
     <h1>Emails</h1>
@@ -31,12 +45,12 @@ async function paint(container) {
       ${connected ? `
         <strong>Gmail connecté</strong>
         <p class="muted" id="connected-account" style="margin:2px 0 8px">Vérification du compte…</p>
-        <p class="muted" style="margin:4px 0 12px">Les publicités et arnaques sont mises à la corbeille automatiquement. Les réponses aux demandes de devis, rendez-vous et renseignements sont préparées mais jamais envoyées sans votre accord.</p>
+        <p class="muted" style="margin:4px 0 12px">Les publicités et arnaques sont mises à la corbeille automatiquement. Les demandes de devis reçoivent une réponse automatique demandant les coordonnées du client. Les réponses aux demandes de rendez-vous et renseignements sont préparées mais jamais envoyées sans votre accord.</p>
         <button type="button" class="btn block" id="scan-btn" ${busy ? "disabled" : ""}>${busy ? "Analyse en cours…" : "🔍 Analyser ma boîte"}</button>
         <button type="button" class="btn secondary block" id="disconnect-btn" style="margin-top:8px">Déconnecter Gmail</button>
       ` : `
         <strong>Connectez votre boîte Gmail</strong>
-        <p class="muted" style="margin:6px 0 12px">ECOSOLARNET pourra repérer les publicités et arnaques, et préparer des brouillons de réponse pour les demandes de devis, rendez-vous et renseignements. Rien n'est jamais envoyé sans votre accord.</p>
+        <p class="muted" style="margin:6px 0 12px">ECOSOLARNET pourra repérer les publicités et arnaques, répondre automatiquement aux demandes de devis pour récolter les coordonnées, et préparer des brouillons pour les demandes de rendez-vous et renseignements (jamais envoyés sans votre accord).</p>
         <button type="button" class="btn block" id="connect-btn">Connecter Gmail</button>
       `}
     </div>
@@ -45,6 +59,21 @@ async function paint(container) {
       <h2>✍️ Brouillons à valider (${pending.length})</h2>
       <button type="button" class="btn secondary block" id="read-aloud-btn" style="margin-bottom:12px">🔊 Lire les emails à voix haute</button>
       ${pending.map((e) => draftCardHtml(e)).join("")}
+    ` : ""}
+
+    ${autoReplied.length > 0 ? `
+      <h2>🤖 Réponses envoyées automatiquement</h2>
+      <p class="muted" style="font-size:12px;margin-top:-6px">Demandes de devis — réponse type demandant les coordonnées, envoyée sans validation.</p>
+      <div class="card">
+        ${autoReplied.map((e) => `
+          <div class="list-item">
+            <div style="flex:1;min-width:0;margin-right:10px">
+              <strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.subject || "(sans sujet)")}</strong>
+              <span class="muted" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.from || "")}</span>
+            </div>
+          </div>
+        `).join("")}
+      </div>
     ` : ""}
 
     ${trashed.length > 0 ? `
@@ -62,7 +91,7 @@ async function paint(container) {
       </div>
     ` : ""}
 
-    ${connected && pending.length === 0 && trashed.length === 0 ? `
+    ${connected && pending.length === 0 && trashed.length === 0 && autoReplied.length === 0 ? `
       <div class="empty-state">
         <div class="big">📭</div>
         <p>Touchez "Analyser ma boîte" pour trier vos emails récents.</p>
@@ -241,6 +270,7 @@ async function runScan(container) {
 
     let trashedCount = 0;
     let draftCount = 0;
+    let autoRepliedCount = 0;
     let errorCount = 0;
     let firstError = "";
 
@@ -261,7 +291,43 @@ async function runScan(container) {
             decision: "trashed",
             processedAt: Date.now(),
           });
-        } else if (["devis", "rendezvous", "renseignement"].includes(result.category)) {
+        } else if (result.category === "devis") {
+          try {
+            await sendReply(token, {
+              threadId: full.threadId,
+              to: full.from,
+              subject: full.subject,
+              body: AUTO_DEVIS_REPLY,
+              messageIdHeader: full.messageIdHeader,
+            });
+            autoRepliedCount++;
+            await Store.put("processedEmails", {
+              id: m.id,
+              threadId: full.threadId,
+              subject: full.subject,
+              from: full.from,
+              category: "devis",
+              reply: AUTO_DEVIS_REPLY,
+              decision: "auto_replied",
+              processedAt: Date.now(),
+            });
+          } catch {
+            // L'envoi auto a échoué (Gmail indisponible, etc.) : on retombe
+            // sur un brouillon à valider plutôt que de perdre la demande.
+            draftCount++;
+            await Store.put("processedEmails", {
+              id: m.id,
+              threadId: full.threadId,
+              subject: full.subject,
+              from: full.from,
+              messageIdHeader: full.messageIdHeader,
+              category: "devis",
+              reply: AUTO_DEVIS_REPLY,
+              decision: "pending",
+              processedAt: Date.now(),
+            });
+          }
+        } else if (["rendezvous", "renseignement"].includes(result.category)) {
           draftCount++;
           await Store.put("processedEmails", {
             id: m.id,
@@ -301,7 +367,7 @@ async function runScan(container) {
     } else if (errorCount > 0) {
       showToast(`${messages.length} email(s) trouvé(s), ${errorCount} erreur(s) : ${firstError}`);
     } else {
-      showToast(`Analyse terminée : ${draftCount} brouillon(s), ${trashedCount} mis à la corbeille`);
+      showToast(`Analyse terminée : ${autoRepliedCount} devis répondu(s) automatiquement, ${draftCount} brouillon(s), ${trashedCount} mis à la corbeille`);
     }
   } catch (err) {
     showToast("Erreur pendant l'analyse : " + (err.message || err));

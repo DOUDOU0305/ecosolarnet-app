@@ -10,9 +10,8 @@ import * as socialpost from "./views/socialpost.js";
 import * as qrcodes from "./views/qrcodes.js";
 import * as assistant from "./views/assistant.js";
 import * as reminders from "./views/reminders.js";
-import * as ideas from "./views/ideas.js";
 import * as more from "./views/more.js";
-import { getSettings } from "./db.js";
+import { getSettings, migrateIdeasIntoReminders } from "./db.js";
 import { startAutoWatch } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
@@ -22,6 +21,7 @@ import { cleanupHandsFree } from "./views/assistant.js";
 import { installSyncHooks, startFirebaseSync } from "./firebaseSync.js";
 
 installSyncHooks();
+migrateIdeasIntoReminders();
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();
@@ -41,14 +41,13 @@ const routes = {
   qrcodes,
   assistant,
   reminders,
-  ideas,
   more,
 };
 
 // Ces routes n'ont plus leur propre onglet en bas (pour respecter la limite de
 // 5 onglets recommandée par Apple) : elles sont accessibles via l'onglet "Plus",
 // qui doit donc rester actif visuellement quand on est dessus.
-const MORE_ROUTES = new Set(["waitlist", "emails", "whatsapp", "socialpost", "qrcodes", "assistant", "settings", "reminders", "ideas"]);
+const MORE_ROUTES = new Set(["waitlist", "emails", "whatsapp", "socialpost", "qrcodes", "assistant", "settings", "reminders"]);
 
 const viewEl = document.getElementById("view");
 const tabButtons = document.querySelectorAll(".tab-btn");

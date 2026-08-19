@@ -160,22 +160,12 @@ async function renderMain(container) {
     </div>
 
     <div class="card" id="saved-tournees-zone"></div>
-
-    <div class="card">
-      <h3 style="margin-top:0">Calendrier</h3>
-      <p class="muted">Vue par année, mois et jour — glissez un rendez-vous pour changer son heure.</p>
-      <button class="btn block" id="open-calendar-btn">📅 Voir le calendrier</button>
-    </div>
   `;
 
   await refreshSavedTourneesZone(container, settings);
 
   container.querySelector("#generate-btn")?.addEventListener("click", async () => {
     await handleGenerate(container, clients, settings);
-  });
-
-  container.querySelector("#open-calendar-btn").addEventListener("click", () => {
-    location.hash = `#/planning/year-${new Date().getFullYear()}`;
   });
 }
 

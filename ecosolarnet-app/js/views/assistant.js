@@ -1,8 +1,41 @@
 import { Store, uid, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { speak, speakAndWait } from "../huggyVoice.js";
-import { geocodeAddress, fullAddress, computeRouteKm } from "../geo.js";
+import { geocodeAddress, fullAddress, computeRouteKm, haversineKm } from "../geo.js";
+import { getActiveTimer, startVisit, stopVisit, formatDuration } from "../timer.js";
+import { computeBriefing, briefingSpokenText } from "./dashboard.js";
 import { FUNCTIONS_BASE } from "../config.js";
+
+const ARRIVE_RADIUS_M = 150; // un peu plus large que le suivi GPS auto, puisque c'est une confirmation vocale explicite de l'utilisateur, pas une détection automatique.
+
+function getCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      reject(new Error("GPS indisponible"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  });
+}
+
+async function findNearbyClient() {
+  const here = await getCurrentPosition();
+  const clients = await Store.getAll("clients");
+  let closest = null;
+  let closestDist = Infinity;
+  for (const c of clients.filter((c) => c.lat != null)) {
+    const d = haversineKm(here, { lat: c.lat, lng: c.lng }) * 1000;
+    if (d < closestDist) {
+      closestDist = d;
+      closest = c;
+    }
+  }
+  return closest && closestDist <= ARRIVE_RADIUS_M ? closest : null;
+}
 
 let log = [];
 let busy = false;
@@ -254,7 +287,34 @@ async function processMessage(message) {
   } else if (data.intent === "add_reminder" && data.reminderText) {
     await Store.put("reminders", { text: data.reminderText, done: false, createdAt: Date.now() });
   } else if (data.intent === "add_idea" && data.ideaText) {
-    await Store.put("ideas", { text: data.ideaText, createdAt: Date.now() });
+    // "Idées" a été fusionné dans "Rappels" (2026-08-19) — une idée dictée
+    // devient simplement un rappel de plus.
+    await Store.put("reminders", { text: data.ideaText, done: false, createdAt: Date.now() });
+  } else if (data.intent === "start_timer") {
+    const active = await getActiveTimer();
+    if (active) {
+      finalReply = `Le chrono tourne déjà, chez ${active.clientName}.`;
+    } else {
+      try {
+        const client = await findNearbyClient();
+        if (client) {
+          await startVisit(client, false);
+          finalReply = `Chrono démarré chez ${client.name}.`;
+        } else {
+          finalReply = "Je ne trouve pas de client à proximité pour démarrer le chrono. Vous pouvez le démarrer à la main depuis l'écran d'accueil.";
+        }
+      } catch {
+        finalReply = "Impossible d'accéder à votre position pour démarrer le chrono. Vérifiez que la localisation est autorisée.";
+      }
+    }
+  } else if (data.intent === "stop_timer") {
+    const active = await getActiveTimer();
+    if (!active) {
+      finalReply = "Aucun chrono en cours.";
+    } else {
+      const visit = await stopVisit();
+      finalReply = `Chrono arrêté — ${formatDuration(visit.durationSeconds)} chez ${visit.clientName}.`;
+    }
   } else if (data.intent === "schedule_appointment" && data.appointment?.clientName && data.appointment?.date) {
     const spoken = data.appointment.clientName.toLowerCase();
     const matched = allClients.find((c) => c.name.toLowerCase() === spoken)
@@ -331,7 +391,9 @@ async function startHandsFree(container) {
   const myToken = renderToken;
   handsFreeActive = true;
   paint(container);
-  await speakAndWait("Mode mains-libres activé. Je vous écoute.");
+  const briefing = await computeBriefing().catch(() => null);
+  const briefingText = briefing ? briefingSpokenText(briefing) : "";
+  await speakAndWait(`Mode mains-libres activé. ${briefingText} Je vous écoute.`);
   if (myToken !== renderToken) return; // l'utilisateur a déjà changé d'écran
   handsFreeLoop(container, myToken);
 }

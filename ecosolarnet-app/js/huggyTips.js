@@ -2,7 +2,7 @@ import { Store, getSettings } from "./db.js";
 import { formatDuration } from "./timer.js";
 import { nextMonthStr } from "./scheduling.js";
 
-// "Les bons tuyaux de Huggy" — conseils calculés à partir des données déjà
+// "Les bons tuyaux de Eco" — conseils calculés à partir des données déjà
 // présentes dans l'appli (pas d'IA, juste des statistiques sur votre activité).
 export async function computeTips() {
   const tips = [];
@@ -106,7 +106,7 @@ export async function computeTips() {
     tips.push({
       icon: "🕵️",
       title: "Pas encore assez de données",
-      text: "Continuez à utiliser le chrono, les devis et les tournées — Huggy aura bientôt de bons tuyaux pour vous.",
+      text: "Continuez à utiliser le chrono, les devis et les tournées — Eco aura bientôt de bons tuyaux pour vous.",
       notifiable: false,
     });
   }

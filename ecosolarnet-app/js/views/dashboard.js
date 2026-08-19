@@ -9,6 +9,69 @@ import { speak } from "../huggyVoice.js";
 let unsubscribeTimer = null;
 let unsubscribeDeparture = null;
 
+function isSameDay(ts, dateStr) {
+  return ts && new Date(ts).toISOString().slice(0, 10) === dateStr;
+}
+
+// Résume ce qui s'est passé pendant que Steve n'avait pas l'app ouverte —
+// géré automatiquement (spam, devis auto-répondus) aujourd'hui, et ce qui
+// attend encore une décision (peu importe depuis quand, ça reste affiché
+// tant que ce n'est pas traité).
+export async function computeBriefing(todayStr = new Date().toISOString().slice(0, 10)) {
+  const emails = await Store.getAll("processedEmails");
+  const whatsapp = await Store.getAll("whatsappMessages");
+
+  return {
+    spamToday: emails.filter((e) => e.decision === "trashed" && isSameDay(e.processedAt, todayStr)).length,
+    devisAutoToday: emails.filter((e) => e.decision === "auto_replied" && isSameDay(e.processedAt, todayStr)).length,
+    emailsPending: emails.filter((e) => e.decision === "pending").length,
+    whatsappPending: whatsapp.filter((m) => m.status === "pending").length,
+  };
+}
+
+// Version parlée du même résumé, pour l'annonce vocale à l'activation du
+// mode mains-libres (voir assistant.js).
+export function briefingSpokenText(b) {
+  const parts = [];
+  if (b.spamToday > 0) parts.push(`${b.spamToday} spam${b.spamToday > 1 ? "s" : ""} supprimé${b.spamToday > 1 ? "s" : ""}`);
+  if (b.devisAutoToday > 0) parts.push(`${b.devisAutoToday} devis répondu${b.devisAutoToday > 1 ? "s" : ""} automatiquement`);
+  if (b.emailsPending > 0) parts.push(`${b.emailsPending} email${b.emailsPending > 1 ? "s" : ""} à valider`);
+  if (b.whatsappPending > 0) parts.push(`${b.whatsappPending} message${b.whatsappPending > 1 ? "s" : ""} WhatsApp à valider`);
+  if (parts.length === 0) return "Rien à signaler, tout est calme.";
+  return "Voici le debriefing : " + parts.join(", ") + ".";
+}
+
+function briefingCardHtml(b) {
+  const hasActivity = b.spamToday > 0 || b.devisAutoToday > 0;
+  const hasPending = b.emailsPending > 0 || b.whatsappPending > 0;
+  if (!hasActivity && !hasPending) {
+    return `
+      <div class="card" style="margin-bottom:24px">
+        <h3 style="margin-top:0">📋 Debriefing</h3>
+        <p class="muted" style="margin:0">Rien à signaler pour l'instant — tout est calme.</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="card" style="margin-bottom:24px">
+      <h3 style="margin-top:0">📋 Debriefing</h3>
+      ${hasActivity ? `
+        <p style="margin:0 0 ${hasPending ? "10px" : "0"}">
+          ${b.spamToday > 0 ? `🗑️ ${b.spamToday} spam${b.spamToday > 1 ? "s" : ""} supprimé${b.spamToday > 1 ? "s" : ""}` : ""}
+          ${b.spamToday > 0 && b.devisAutoToday > 0 ? " · " : ""}
+          ${b.devisAutoToday > 0 ? `🤖 ${b.devisAutoToday} devis répondu${b.devisAutoToday > 1 ? "s" : ""} automatiquement` : ""}
+        </p>
+      ` : ""}
+      ${hasPending ? `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${b.emailsPending > 0 ? `<button type="button" class="btn secondary block" id="briefing-emails-btn">✍️ ${b.emailsPending} email${b.emailsPending > 1 ? "s" : ""} à valider</button>` : ""}
+          ${b.whatsappPending > 0 ? `<button type="button" class="btn secondary block" id="briefing-whatsapp-btn">💬 ${b.whatsappPending} message${b.whatsappPending > 1 ? "s" : ""} WhatsApp à valider</button>` : ""}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 export async function render(container) {
   if (unsubscribeTimer) {
     unsubscribeTimer();
@@ -40,10 +103,14 @@ export async function render(container) {
   const todayAppts = appointmentsForDate(todayStr);
   const tomorrowAppts = appointmentsForDate(tomorrowStr);
 
+  const briefing = await computeBriefing(todayStr);
+
   container.innerHTML = `
     <h1 style="margin-bottom:6px">Bonjour 👋</h1>
     <p class="muted" style="margin:0 0 2px">${settings.companyName} — ${now.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" })}</p>
     <p class="muted" id="weather-line" style="margin:0 0 28px">🌤️ Chargement de la météo…</p>
+
+    ${briefingCardHtml(briefing)}
 
     <div id="departure-banner-zone"></div>
 
@@ -74,10 +141,17 @@ export async function render(container) {
     </div>
 
     <div id="huggy-mini" style="display:none;justify-content:space-between;align-items:center;gap:10px;padding:2px 2px 0">
-      <span class="muted">🕵️ Huggy a un tuyau pour vous</span>
+      <span class="muted">🕵️ Eco a un tuyau pour vous</span>
       <button type="button" class="btn secondary small" id="huggy-play-btn">▶️ Écouter</button>
     </div>
   `;
+
+  container.querySelector("#briefing-emails-btn")?.addEventListener("click", () => {
+    location.hash = "#/emails";
+  });
+  container.querySelector("#briefing-whatsapp-btn")?.addEventListener("click", () => {
+    location.hash = "#/whatsapp";
+  });
 
   await updateTodayTimerButtons(container);
 
@@ -172,7 +246,7 @@ export async function render(container) {
         }
         if ("Notification" in window && Notification.permission === "granted") {
           try {
-            const notif = new Notification("🕵️ Huggy a un tuyau pour vous", {
+            const notif = new Notification("🕵️ Eco a un tuyau pour vous", {
               body: freshTips[0].title,
               tag: "huggy-tip",
             });

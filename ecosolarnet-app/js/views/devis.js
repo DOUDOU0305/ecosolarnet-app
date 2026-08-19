@@ -5,6 +5,7 @@ import { showToast, escapeHtml } from "../toast.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
 import { FUNCTIONS_BASE } from "../config.js";
 import { FREQUENCY_LABELS } from "../scheduling.js";
+import { isNative } from "../huggyVoice.js";
 
 const SERVICE_LABELS = {
   vitres: "Nettoyage vitres",
@@ -1061,5 +1062,22 @@ async function generatePdf(devis, settings) {
     }
   }
 
-  doc.save(`Devis_${(devis.clientName || "client").replace(/\s+/g, "_")}_${devis.date}.pdf`);
+  const filename = `Devis_${(devis.clientName || "client").replace(/\s+/g, "_")}_${devis.date}.pdf`;
+
+  // doc.save() triggers a browser-style file download, which the native iOS
+  // WKWebView silently swallows (no error, no visible result). In the native
+  // app, write the PDF to disk instead and hand it to iOS's native share
+  // sheet (AirDrop, Fichiers, Mail...) via the Filesystem/Share plugins
+  // bundled in js/vendor/native-plugins.bundle.js.
+  if (isNative()) {
+    const base64 = doc.output("datauristring").split(",")[1];
+    const { uri } = await window.NativeFilesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: "CACHE",
+    });
+    await window.NativeShare.share({ title: filename, url: uri });
+  } else {
+    doc.save(filename);
+  }
 }
