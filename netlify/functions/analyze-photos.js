@@ -1,0 +1,116 @@
+const { withCors } = require("./_cors.js");
+
+exports.handler = withCors(async function handler(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(event.body || "{}");
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+  }
+
+  const { images = [], settings = {} } = payload;
+  if (images.length === 0) {
+    return { statusCode: 400, body: JSON.stringify({ error: "Aucune photo fournie" }) };
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return { statusCode: 500, body: JSON.stringify({ error: "Clé API manquante côté serveur" }) };
+  }
+
+  const tiers = settings.windowTiers || {};
+  const tiersText = Object.entries(tiers)
+    .map(([key, t]) => `- "${key}" (${t.label}) : ${t.hint || ""}`)
+    .join("\n");
+
+  const systemPrompt = `Tu es l'assistant qui aide Steve Peters, gérant d'ECOSOLARNET (nettoyage de vitres, vérandas, pergolas, carports, garde-corps, velux et panneaux solaires à Gerpinnes, Belgique), à préparer un devis à partir de photos prises chez un client.
+
+Regarde attentivement chaque photo et détermine quelles prestations parmi celles-ci sont visibles et pertinentes : vitres, véranda, pergola, carport, garde-corps (rambarde/balustrade en verre ou métal), velux (fenêtre de toit), panneaux solaires.
+
+Pour les vitres, si tu identifies cette prestation, choisis la catégorie de maison la plus proche parmi :
+${tiersText}
+Choisis aussi la formule : "ext" (extérieur uniquement) ou "full" (intérieur + extérieur) — si les photos ne permettent pas de le déterminer, choisis "ext" par défaut.
+
+Estime aussi, pour les vitres, le temps de nettoyage nécessaire en minutes, pour une seule personne qui travaille seule. C'est une information interne pour Steve (pas pour le client), donc pars du principe pessimiste que les vitres sont très sales et n'ont jamais été nettoyées, même si elles paraissent propres sur la photo — ça lui sert à bloquer assez de temps dans son planning plutôt qu'à être pris de court.
+
+Un nettoyage de vitres complet comprend plusieurs étapes distinctes qui prennent chacune du temps, ne compte pas juste "un coup de raclette" :
+1. Passage de la tête de loup pour retirer les toiles d'araignées (en hauteur, autour des châssis et corniches)
+2. Dépoussiérage des châssis, intérieur et extérieur
+3. Nettoyage des vitres à proprement parler, intérieur et extérieur : mouiller, passage de la lame (mouilleur), passage du PAD, raclette, essuyage des bords de vitres
+4. Dépoussiérage des appuis de fenêtre
+
+Base ton estimation sur le nombre de fenêtres visibles, leur taille, et la catégorie de maison choisie, en tenant compte de TOUTES ces étapes. Pour référence réelle donnée par Steve : un nettoyage complet a pris 2h30 à deux personnes sur un chantier, soit environ 5 heures (300 minutes) de travail si une seule personne l'avait fait seule — utilise ça comme ordre de grandeur pour une maison de taille standard avec plusieurs fenêtres, et ajuste proportionnellement selon ce que tu vois sur les photos (moins de fenêtres/plus petite maison = moins de temps, plus de fenêtres/plus grande maison = plus de temps). Ne sous-estime pas.
+
+Pour les panneaux solaires, si tu peux compter les panneaux visibles sur la ou les photos, indique ce nombre. Si tu ne peux pas compter avec une confiance raisonnable, ne renvoie pas de nombre.
+
+Pour véranda / pergola / carport / garde-corps / velux, si la prestation est visible, estime un nombre d'heures de travail raisonnable (nombre décimal, ex: 1.5) pour un nettoyage complet, en te basant sur la taille apparente et le nombre d'éléments visibles.
+
+Sois prudent : ce ne sont que des estimations à partir de photos, que Steve vérifiera et ajustera lui-même avant d'envoyer le devis. N'invente rien qui n'est pas visible sur les photos.
+
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exact :
+{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "gardecorps": {"hours": 1}, "velux": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
+
+N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport/gardecorps/velux) que si ce service apparaît dans "servicesDetected". "notes" doit toujours être rempli.`;
+
+  const content = [
+    { type: "text", text: "Voici la ou les photos prises chez le client :" },
+    ...images.slice(0, 4).map((img) => ({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: img },
+    })),
+  ];
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 900,
+        system: systemPrompt,
+        messages: [{ role: "user", content }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { statusCode: 502, body: JSON.stringify({ error: `Anthropic API error: ${errText.slice(0, 300)}` }) };
+    }
+
+    const data = await res.json();
+    const textBlock = (data.content || []).find((block) => block.type === "text");
+    const text = textBlock?.text || "{}";
+    let parsed;
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(match ? match[0] : text);
+    } catch {
+      return { statusCode: 502, body: JSON.stringify({ error: "Réponse IA illisible" }) };
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        servicesDetected: Array.isArray(parsed.servicesDetected) ? parsed.servicesDetected : [],
+        vitres: parsed.vitres || null,
+        panneaux: parsed.panneaux || null,
+        veranda: parsed.veranda || null,
+        pergola: parsed.pergola || null,
+        carport: parsed.carport || null,
+        gardecorps: parsed.gardecorps || null,
+        velux: parsed.velux || null,
+        notes: typeof parsed.notes === "string" ? parsed.notes : "",
+      }),
+    };
+  } catch (err) {
+    return { statusCode: 500, body: JSON.stringify({ error: err.message || "Erreur inconnue" }) };
+  }
+});

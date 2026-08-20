@@ -1,0 +1,106 @@
+const { withCors } = require("./_cors.js");
+
+exports.handler = withCors(async function handler(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(event.body || "{}");
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+  }
+
+  const { message = "", clients = [], todayDate = "", companyName = "ECOSOLARNET", recentCorrections = [] } = payload;
+  const ownerName = "Steve Peters";
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return { statusCode: 500, body: JSON.stringify({ error: "Clé API manquante côté serveur" }) };
+  }
+
+  const clientListText = clients.length > 0 ? clients.map((c) => `- ${c.name}`).join("\n") : "(aucun client enregistré pour l'instant)";
+
+  // Alimenté par le bouton "❌ Ce n'est pas ça" dans l'appli : à chaque fois
+  // que Steve corrige une réponse, la correction est renvoyée ici lors des
+  // appels suivants, pour que les mêmes malentendus (mots mal transcrits,
+  // clients confondus...) ne se reproduisent pas.
+  const correctionsText = recentCorrections.length > 0
+    ? recentCorrections
+        .map((c) => `- Quand Steve a dit "${c.originalMessage}", tu as répondu "${c.wrongReply}" ce qui était faux — ce qu'il voulait vraiment dire : "${c.correction}"`)
+        .join("\n")
+    : "";
+
+  const systemPrompt = `Tu es l'assistant vocal intégré à l'application professionnelle de ${ownerName}, qui gère "${companyName}", entreprise de nettoyage de vitres, vérandas, pergolas, carports et panneaux solaires à Gerpinnes, en Belgique. Aujourd'hui nous sommes le ${todayDate}.
+
+${ownerName} te dicte une phrase (via la dictée vocale de son iPhone, donc le texte peut contenir des imperfections de transcription). Détermine ce qu'il veut faire parmi :
+
+- "add_client" : il veut enregistrer un nouveau client. Extrais ce que tu peux : nom complet, adresse (rue et numéro), code postal, ville, téléphone. Laisse vide ("") ce qui n'est pas mentionné.
+- "schedule_appointment" : il veut planifier un rendez-vous pour un client à une date (et éventuellement une heure) donnée. Essaie de faire correspondre le nom cité à un client existant dans cette liste :
+${clientListText}
+  Si un nom correspond clairement (même approximativement, la dictée vocale déforme parfois les noms), renvoie exactement le nom tel qu'il apparaît dans la liste ci-dessus. Sinon renvoie le nom tel qu'il l'a prononcé.
+  Convertis la date en format AAAA-MM-JJ (déduis l'année à partir d'aujourd'hui si elle n'est pas précisée, en choisissant la prochaine occurrence de cette date si elle semble déjà passée). Convertis l'heure en HH:MM (24h) si mentionnée, sinon laisse vide.
+- "add_reminder" : il veut qu'on lui rappelle de faire quelque chose (souvent introduit par "fais-moi un rappel", "rappelle-moi", "n'oublie pas que je dois"...). Résume la tâche clairement et brièvement dans "reminderText", à la première personne (ex : "Mettre les loques à laver et repréparer la camionnette en rentrant à la maison ce soir."). Garde toute précision temporelle ou de contexte mentionnée (ex : "en rentrant à la maison", "demain matin") dans le texte du rappel lui-même, car l'application n'envoie pas de notification automatique déclenchée par la géolocalisation ou l'heure — le rappel est juste noté dans une liste à consulter.
+- "add_idea" : il vient d'avoir une idée et veut la noter (souvent introduit par "je viens d'avoir une idée", "prends note", "note ça"...). Retranscris fidèlement l'idée dictée dans "ideaText", en corrigeant seulement les fautes de transcription évidentes, sans reformuler le fond.
+- "start_timer" : il arrive chez un client et veut démarrer le chrono de la prestation (ex : "vas-y Eco", "c'est parti", "je commence le nettoyage", "go pour le nettoyage", "démarre le chrono", ou toute autre formulation équivalente signifiant qu'il commence à travailler). Ne demande jamais de nom de client pour cette intention — l'app le déduit toute seule par géolocalisation.
+- "stop_timer" : il a fini la prestation en cours (ex : "ok Eco, j'ai fini", "j'ai terminé", "c'est fini", "stop, on a fini", "arrête le chrono", ou toute autre formulation équivalente signifiant qu'il a terminé).
+- "general_question" : toute autre question ou demande de conversation générale. Réponds-y directement et brièvement en français. Si la question nécessite une information en temps réel que tu n'as pas (météo actuelle, horaires d'ouverture réels, position géographique...), dis-le clairement plutôt que d'inventer une réponse.
+- "unclear" : tu ne comprends pas ce qui est demandé, ou il manque des informations essentielles (par exemple "schedule_appointment" sans nom de client identifiable). Dans ce cas, "reply" doit être une question de clarification courte.
+${correctionsText ? `\nCorrections récentes de Steve — évite de refaire ces erreurs si une nouvelle demande y ressemble :\n${correctionsText}\n` : ""}
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
+{"intent": "add_client|schedule_appointment|add_reminder|add_idea|start_timer|stop_timer|general_question|unclear", "reply": "phrase courte à dire/afficher à Steve pour confirmer ou répondre", "client": {"name": "", "address": "", "postalCode": "", "city": "", "phone": ""}, "appointment": {"clientName": "", "date": "", "time": ""}, "reminderText": "", "ideaText": ""}
+
+Inclus "client" uniquement si intent="add_client", "appointment" uniquement si intent="schedule_appointment", "reminderText" uniquement si intent="add_reminder", "ideaText" uniquement si intent="add_idea" (mets les autres champs à null). Le "reply" doit toujours être rempli, à la première personne, comme si tu parlais directement à Steve (exemples : "C'est noté, j'ai ajouté Jean Dupont." ou "J'ai programmé Marie Dubois le 14 août à 10h30." ou "Ok, c'est noté." ou "Idée enregistrée." — pour "start_timer"/"stop_timer", peu importe ce que tu mets dans "reply", l'application le remplace de toute façon par sa propre confirmation une fois l'action faite).`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: [{ role: "user", content: message }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { statusCode: 502, body: JSON.stringify({ error: `Anthropic API error: ${errText.slice(0, 300)}` }) };
+    }
+
+    const data = await res.json();
+    const textBlock = (data.content || []).find((block) => block.type === "text");
+    const text = textBlock?.text || "{}";
+    let parsed;
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(match ? match[0] : text);
+    } catch {
+      parsed = { intent: "unclear", reply: "Je n'ai pas compris, pouvez-vous reformuler ?" };
+    }
+
+    const validIntents = ["add_client", "schedule_appointment", "add_reminder", "add_idea", "start_timer", "stop_timer", "general_question", "unclear"];
+    const intent = validIntents.includes(parsed.intent) ? parsed.intent : "unclear";
+    const reply = typeof parsed.reply === "string" && parsed.reply ? parsed.reply : "Je n'ai pas compris, pouvez-vous reformuler ?";
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        intent,
+        reply,
+        client: parsed.client || null,
+        appointment: parsed.appointment || null,
+        reminderText: typeof parsed.reminderText === "string" ? parsed.reminderText : null,
+        ideaText: typeof parsed.ideaText === "string" ? parsed.ideaText : null,
+      }),
+    };
+  } catch (err) {
+    return { statusCode: 500, body: JSON.stringify({ error: err.message || "Erreur inconnue" }) };
+  }
+});
