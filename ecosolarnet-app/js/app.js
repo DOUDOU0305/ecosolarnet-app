@@ -11,17 +11,44 @@ import * as qrcodes from "./views/qrcodes.js";
 import * as assistant from "./views/assistant.js";
 import * as reminders from "./views/reminders.js";
 import * as more from "./views/more.js";
-import { getSettings, migrateIdeasIntoReminders } from "./db.js";
-import { startAutoWatch } from "./timer.js";
+import { getSettings, migrateIdeasIntoReminders, findWaitlistRevisitCandidates, resolveWaitlistRevisit } from "./db.js";
+import { startAutoWatch, onTimerEvent, resolveArrivalConfirm } from "./timer.js";
 import { startDepartureReminders } from "./departureReminder.js";
 import { consumeRedirectToken } from "./gmailAuth.js";
 import { refreshVoiceSettingsCache } from "./huggyVoice.js";
 import { cleanupSwipe as cleanupCalendarSwipe } from "./views/calendar.js";
 import { cleanupHandsFree } from "./views/assistant.js";
 import { installSyncHooks, startFirebaseSync } from "./firebaseSync.js";
+import { askYesNo } from "./confirmDialog.js";
+import { showToast } from "./toast.js";
 
 installSyncHooks();
 migrateIdeasIntoReminders();
+
+// Liste d'attente : si un client déjà en attente a en fait été nettoyé
+// récemment (dernier mois/semaine), on demande confirmation à Steve avant
+// de la retirer, plutôt que de la supprimer sans lui demander — une par
+// une pour ne jamais empiler plusieurs fenêtres à la fois.
+findWaitlistRevisitCandidates().then(async (candidates) => {
+  for (const c of candidates) {
+    const dateLabel = new Date(c.visitDate).toLocaleDateString("fr-BE", { day: "numeric", month: "long" });
+    const isNormal = await askYesNo(
+      `${c.name} a été fait le ${dateLabel}. Est-ce normal que nous soyons de retour chez lui/elle ?`,
+      { title: "Liste d'attente" }
+    );
+    await resolveWaitlistRevisit(c.entryId, c.visitDate, isNormal);
+    if (!isNormal) showToast(`${c.name} retiré de la liste d'attente`);
+  }
+});
+
+// Écoute globale (pas seulement quand le tableau de bord est affiché) : si le
+// GPS arrive près d'un client sans être sûr à 100% duquel il s'agit, on
+// demande confirmation à Steve, où qu'il soit dans l'app.
+onTimerEvent(async (event, data) => {
+  if (event !== "confirm-arrival") return;
+  const confirmed = await askYesNo(`Êtes-vous chez ${data.clientName} ?`, { title: "Arrivée détectée" });
+  resolveArrivalConfirm(data.clientId, confirmed);
+});
 
 if (location.hash.includes("access_token=")) {
   consumeRedirectToken();
@@ -161,7 +188,7 @@ renderRoute();
 startFirebaseSync().catch((err) => console.error("[sync] init failed", err));
 
 getSettings().then((s) => {
-  if (s.autoTimerEnabled) startAutoWatch();
+  if (s.autoTimerEnabled) startAutoWatch().catch((err) => console.error("[auto-timer] permission GPS refusée au démarrage", err));
   if (s.departureRemindersEnabled) startDepartureReminders();
 });
 

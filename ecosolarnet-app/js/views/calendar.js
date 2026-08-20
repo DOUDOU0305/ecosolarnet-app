@@ -1,6 +1,7 @@
 import { Store, getSettings } from "../db.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { wazeUrl, computeRouteKm } from "../geo.js";
+import { stopVisitForDifferentClient } from "../timer.js";
 import { monthLabel } from "../scheduling.js";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -37,6 +38,10 @@ function fmtHMDisplay(minutes) {
 function parseHM(str) {
   const [h, m] = str.split(":").map(Number);
   return h * 60 + m;
+}
+
+function stripAccents(str) {
+  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 // renderDay()/renderMonth() sont appelées à répétition sur le même élément
@@ -312,6 +317,7 @@ export async function renderDay(container, dateStr) {
 
   let dayTourneeId = existingEntry?.tourneeId || null;
   let dayClients = [];
+  let addClientSearch = "";
 
   if (existingEntry?.tourneeId) {
     const t = await Store.get("tournees", existingEntry.tourneeId);
@@ -372,6 +378,7 @@ export async function renderDay(container, dateStr) {
     <div id="defense-notice"></div>
 
     <div class="field" style="max-width:260px" id="add-client-field">
+      <input type="text" id="add-client-search-input" placeholder="🔍 Rechercher un client…" autocomplete="off" style="margin-bottom:6px">
       <select id="add-client-select">
         <option value="">— Ajouter un client à ce jour —</option>
         ${allClients.filter((c) => !dayClients.some((dc) => dc.id === c.id)).map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
@@ -651,7 +658,7 @@ export async function renderDay(container, dateStr) {
       <div class="card" style="background:var(--teal-light)">
         <strong>${escapeHtml(c.name)}</strong>
         ${c.address ? `<p class="muted" style="margin:4px 0 0">${escapeHtml(c.address)}, ${escapeHtml(c.postalCode)} ${escapeHtml(c.city || "")}</p>` : ""}
-        <a href="${wazeUrl(c)}" id="waze-btn" class="btn secondary block" style="margin-top:10px;text-decoration:none;display:block;text-align:center">🚗 En route vers ce client (Waze)</a>
+        <a href="${wazeUrl(c)}" id="waze-btn" class="waze-link btn secondary block" data-client-id="${c.id || ""}" style="margin-top:10px;text-decoration:none;display:block;text-align:center">🚗 En route vers ce client (Waze)</a>
         <div class="field" style="margin-top:10px">
           <label>Heure de début</label>
           <input type="time" id="edit-start" value="${fmtHM(c.startMinutes)}">
@@ -674,6 +681,12 @@ export async function renderDay(container, dateStr) {
         <button type="button" class="btn secondary block" id="edit-close-btn" style="margin-top:8px">Fermer</button>
       </div>
     `;
+    const wazeBtn = editor.querySelector("#waze-btn");
+    if (wazeBtn) {
+      wazeBtn.addEventListener("click", () => {
+        stopVisitForDifferentClient(wazeBtn.dataset.clientId).catch(() => {});
+      });
+    }
     editor.querySelector("#edit-save-btn").addEventListener("click", async () => {
       const newStart = parseHM(editor.querySelector("#edit-start").value);
       const h = parseInt(editor.querySelector("#edit-duration-h").value, 10) || 0;
@@ -701,9 +714,13 @@ export async function renderDay(container, dateStr) {
 
   function refreshAddSelect() {
     const select = container.querySelector("#add-client-select");
+    const needle = stripAccents(addClientSearch.toLowerCase()).trim();
+    const options = allClients
+      .filter((c) => !dayClients.some((dc) => dc.id === c.id))
+      .filter((c) => !needle || stripAccents((c.name || "").toLowerCase()).includes(needle));
     select.innerHTML = `
       <option value="">— Ajouter un client à ce jour —</option>
-      ${allClients.filter((c) => !dayClients.some((dc) => dc.id === c.id)).map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
+      ${options.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
     `;
   }
 
@@ -875,6 +892,11 @@ export async function renderDay(container, dateStr) {
 
   container.querySelector("#replace-slot-btn").addEventListener("click", openReplaceSlotPanel);
 
+  container.querySelector("#add-client-search-input").addEventListener("input", (e) => {
+    addClientSearch = e.target.value;
+    refreshAddSelect();
+  });
+
   container.querySelector("#add-client-select").addEventListener("change", async (e) => {
     const id = e.target.value;
     if (!id) return;
@@ -898,6 +920,8 @@ export async function renderDay(container, dateStr) {
     });
     await persistDay();
     renderBlocks();
+    addClientSearch = "";
+    container.querySelector("#add-client-search-input").value = "";
     refreshAddSelect();
     showToast("Client ajouté à ce jour");
   });

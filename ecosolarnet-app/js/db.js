@@ -114,6 +114,61 @@ export async function migrateIdeasIntoReminders() {
   }
 }
 
+function addDaysToDateStr(dateStr, days) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+const WAITLIST_REVISIT_WINDOW_DAYS = 45; // couvre "le mois dernier ou la semaine dernière"
+
+// Cherche, parmi les clients en liste d'attente déjà liés à une fiche
+// client, ceux dont la dernière visite enregistrée est récente (~mois et
+// demi) alors qu'ils ne sont pas abonnés mensuel — signe possible que
+// l'entrée en liste d'attente est devenue inutile et risquerait de le
+// reprogrammer une seconde fois dans un délai qu'il n'a pas demandé.
+// Ne modifie rien : c'est resolveWaitlistRevisit(), après la réponse de
+// Steve à la question posée à l'écran, qui décide de la suite.
+export async function findWaitlistRevisitCandidates() {
+  const entries = await Store.getAll("waitlist");
+  const linked = entries.filter((e) => e.clientId);
+  if (linked.length === 0) return [];
+
+  const [clients, visits] = await Promise.all([Store.getAll("clients"), Store.getAll("visits")]);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cutoffStr = addDaysToDateStr(todayStr, -WAITLIST_REVISIT_WINDOW_DAYS);
+
+  const candidates = [];
+  for (const e of linked) {
+    const client = clients.find((c) => c.id === e.clientId);
+    if (!client || client.frequency === "mensuel") continue;
+    const clientVisits = visits.filter((v) => v.clientId === e.clientId && v.date);
+    if (clientVisits.length === 0) continue;
+    const lastVisit = clientVisits.reduce((a, b) => (a.date > b.date ? a : b));
+    if (lastVisit.date < cutoffStr) continue;
+    // Déjà posée pour cette visite précise (Steve a répondu "oui, c'est normal") :
+    // on ne redemande que si une visite plus récente encore est apparue depuis.
+    if (e.lastAskedAboutVisitDate && e.lastAskedAboutVisitDate >= lastVisit.date) continue;
+    candidates.push({ entryId: e.id, clientId: e.clientId, name: e.name, visitDate: lastVisit.date });
+  }
+  return candidates;
+}
+
+// Appelé après que Steve a répondu à "X a été fait le [date]. Est-ce normal
+// que nous soyons de retour chez lui/elle ?". "Oui" (normal, la revisite est
+// voulue) : on garde l'entrée, mais on retient cette visite pour ne pas
+// reposer la même question tant qu'il n'y en a pas une nouvelle. "Non" (pas
+// normal) : l'entrée n'a plus lieu d'être, on la retire de la liste d'attente.
+export async function resolveWaitlistRevisit(entryId, visitDate, isNormal) {
+  if (!isNormal) {
+    await Store.delete("waitlist", entryId);
+    return;
+  }
+  const entry = await Store.get("waitlist", entryId);
+  if (!entry) return;
+  await Store.put("waitlist", { ...entry, lastAskedAboutVisitDate: visitDate });
+}
+
 export const DEFAULT_SETTINGS = {
   id: "main",
   companyName: "ECOSOLARNET",

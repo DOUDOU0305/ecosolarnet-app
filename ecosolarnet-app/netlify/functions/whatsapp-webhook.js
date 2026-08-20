@@ -114,6 +114,7 @@ exports.handler = withCors(async function handler(event) {
         from,
         profileName,
         body,
+        category,
         draftReply: "",
         status: "ignored",
         direction: "incoming",
@@ -132,6 +133,7 @@ exports.handler = withCors(async function handler(event) {
           from,
           profileName,
           body,
+          category,
           draftReply: AUTO_DEVIS_REPLY,
           status: "sent",
           sentBody: AUTO_DEVIS_REPLY,
@@ -147,6 +149,7 @@ exports.handler = withCors(async function handler(event) {
           from,
           profileName,
           body,
+          category,
           draftReply: AUTO_DEVIS_REPLY,
           status: "pending",
           direction: "incoming",
@@ -154,11 +157,16 @@ exports.handler = withCors(async function handler(event) {
         });
       }
     } else {
+      // "rendezvous" (déplacement/changement de RDV), "renseignement" ou
+      // "autre" : on garde la catégorie pour que le debriefing du matin
+      // puisse citer nommément les demandes de déplacement de rendez-vous
+      // plutôt que de les noyer dans un compte générique.
       await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/whatsappMessages/${id}`, {
         id,
         from,
         profileName,
         body,
+        category,
         draftReply: reply,
         status: "pending",
         direction: "incoming",

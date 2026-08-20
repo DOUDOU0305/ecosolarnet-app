@@ -329,16 +329,25 @@ export async function render(container) {
   });
 
   const autoTimerStatus = container.querySelector("#auto-timer-status");
-  container.querySelector("#auto-timer-toggle").addEventListener("change", async (e) => {
+  const autoTimerToggle = container.querySelector("#auto-timer-toggle");
+  autoTimerToggle.addEventListener("change", async (e) => {
     const enabled = e.target.checked;
-    await saveSettings({ autoTimerEnabled: enabled });
     if (enabled) {
-      autoTimerStatus.textContent = "Activation…";
-      await startAutoWatch();
-      autoTimerStatus.textContent = "✅ Suivi GPS actif.";
-      showToast("Suivi GPS automatique activé");
+      autoTimerStatus.textContent = "Activation… (autorisez la localisation si iPhone le demande)";
+      try {
+        await startAutoWatch();
+        await saveSettings({ autoTimerEnabled: true });
+        autoTimerStatus.textContent = "✅ Suivi GPS actif.";
+        showToast("Suivi GPS automatique activé");
+      } catch (err) {
+        autoTimerToggle.checked = false;
+        await saveSettings({ autoTimerEnabled: false });
+        autoTimerStatus.textContent = "⚠️ " + (err.message || "Impossible d'activer le GPS.");
+        showToast("Échec de l'activation du GPS — vérifiez l'autorisation de localisation dans les Réglages iPhone");
+      }
     } else {
       stopAutoWatch();
+      await saveSettings({ autoTimerEnabled: false });
       autoTimerStatus.textContent = "";
       showToast("Suivi GPS automatique désactivé");
     }

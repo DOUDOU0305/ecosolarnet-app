@@ -1,6 +1,6 @@
 import { Store, getSettings } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
-import { getActiveTimer, startVisit, stopVisit, onTimerEvent, formatDuration } from "../timer.js";
+import { getActiveTimer, startVisit, stopVisit, stopVisitForDifferentClient, onTimerEvent, formatDuration } from "../timer.js";
 import { wazeUrl } from "../geo.js";
 import { onDepartureEvent, fmtMinutesOfDay } from "../departureReminder.js";
 import { getWeatherSummary } from "../weather.js";
@@ -13,35 +13,137 @@ function isSameDay(ts, dateStr) {
   return ts && new Date(ts).toISOString().slice(0, 10) === dateStr;
 }
 
+// Rendez-vous du jour donné, dans l'ordre — utilisé à la fois par
+// l'affichage (render) et par le debriefing vocal (computeBriefing).
+async function appointmentsForDate(dateStr) {
+  const [entries, visitTimesAll, clients] = await Promise.all([
+    Store.getAll("planningEntries"),
+    Store.getAll("visitTimes"),
+    Store.getAll("clients"),
+  ]);
+  const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
+  if (times.length > 0) {
+    return times.map((t) => ({
+      time: fmtMinutesOfDay(t.startMinutes),
+      startMinutes: t.startMinutes,
+      name: t.clientName,
+      clientId: t.clientId,
+      client: clients.find((c) => c.id === t.clientId) || null,
+    }));
+  }
+  const entry = entries.find((e) => e.date === dateStr);
+  return entry ? [{ time: "", startMinutes: null, name: entry.label, clientId: null, client: null }] : [];
+}
+
 // Résume ce qui s'est passé pendant que Steve n'avait pas l'app ouverte —
-// géré automatiquement (spam, devis auto-répondus) aujourd'hui, et ce qui
+// géré automatiquement (spam, devis auto-répondus) aujourd'hui, ce qui
 // attend encore une décision (peu importe depuis quand, ça reste affiché
-// tant que ce n'est pas traité).
+// tant que ce n'est pas traité), et les rendez-vous du jour (pour la
+// lecture vocale du matin).
 export async function computeBriefing(todayStr = new Date().toISOString().slice(0, 10)) {
   const emails = await Store.getAll("processedEmails");
   const whatsapp = await Store.getAll("whatsappMessages");
+  const todayAppointments = await appointmentsForDate(todayStr);
 
   const devisAutoEmailsToday = emails.filter((e) => e.decision === "auto_replied" && isSameDay(e.processedAt, todayStr)).length;
   const devisAutoWhatsappToday = whatsapp.filter((m) => m.sentAuto && isSameDay(m.sentAt, todayStr)).length;
+  const whatsappPendingList = whatsapp.filter((m) => m.status === "pending");
 
   return {
     spamToday: emails.filter((e) => e.decision === "trashed" && isSameDay(e.processedAt, todayStr)).length,
     devisAutoToday: devisAutoEmailsToday + devisAutoWhatsappToday,
     emailsPending: emails.filter((e) => e.decision === "pending").length,
-    whatsappPending: whatsapp.filter((m) => m.status === "pending").length,
+    whatsappPending: whatsappPendingList.length,
+    // Cités nommément dans le debriefing vocal plutôt que noyés dans le
+    // compte générique — un déplacement de rendez-vous mérite d'être signalé
+    // par le nom du client, pas juste "1 message WhatsApp à valider".
+    whatsappRendezvousPending: whatsappPendingList
+      .filter((m) => m.category === "rendezvous")
+      .map((m) => m.profileName || m.from?.replace("whatsapp:", "") || "un client"),
+    todayAppointments: todayAppointments.filter((a) => a.clientId),
   };
+}
+
+// Nombres 0-59 en toutes lettres, pour une lecture vocale naturelle des
+// heures (un TTS lit "08H00" lettre par lettre plutôt que "huit heures").
+const NUMBER_UNITS = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize"];
+const NUMBER_TENS = { 10: "dix", 20: "vingt", 30: "trente", 40: "quarante", 50: "cinquante" };
+
+function numberToFrenchWords(n) {
+  if (n <= 16) return NUMBER_UNITS[n];
+  if (n < 20) return `dix-${NUMBER_UNITS[n - 10]}`;
+  const tens = Math.floor(n / 10) * 10;
+  const unit = n % 10;
+  if (unit === 0) return NUMBER_TENS[tens];
+  if (unit === 1) return `${NUMBER_TENS[tens]}-et-un`;
+  return `${NUMBER_TENS[tens]}-${NUMBER_UNITS[unit]}`;
+}
+
+// "une heure" (féminin) uniquement pour 1 et 21 ; les autres nombres cardinaux
+// français sont invariables devant "heure(s)".
+function hourWord(h) {
+  const word = numberToFrenchWords(h);
+  return h === 1 || h === 21 ? word.replace(/un$/, "une") : word;
+}
+
+function spokenTime(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0 && m === 0) return "minuit";
+  if (h === 12 && m === 0) return "midi";
+  if (m === 45) {
+    const nextH = (h + 1) % 24;
+    if (nextH === 0) return "minuit moins le quart";
+    if (nextH === 12) return "midi moins le quart";
+    return `${hourWord(nextH)} heure${nextH === 1 ? "" : "s"} moins le quart`;
+  }
+  const hourPart = `${hourWord(h)} heure${h === 1 ? "" : "s"}`;
+  if (m === 0) return hourPart;
+  if (m === 15) return `${hourPart} et quart`;
+  if (m === 30) return `${hourPart} et demie`;
+  return `${hourPart} ${numberToFrenchWords(m)}`;
+}
+
+// Lecture naturelle des rendez-vous du jour — pas une simple énumération de
+// noms, mais des phrases ("Votre premier rendez-vous est Pierre à huit
+// heures. Ensuite vous avez Véronique à onze heures et Marc est prévu à
+// quatorze heures."), comme demandé explicitement par Steve.
+function spokenAppointments(appts) {
+  if (appts.length === 0) return "Vous n'avez aucun rendez-vous prévu aujourd'hui.";
+  if (appts.length === 1) {
+    return `Votre seul rendez-vous aujourd'hui est ${appts[0].name} à ${spokenTime(appts[0].startMinutes)}.`;
+  }
+  const [first, ...rest] = appts;
+  const last = rest[rest.length - 1];
+  const middle = rest.slice(0, -1);
+  let text = `Votre premier rendez-vous est ${first.name} à ${spokenTime(first.startMinutes)}.`;
+  if (middle.length === 0) {
+    text += ` Ensuite, ${last.name} est prévu à ${spokenTime(last.startMinutes)}.`;
+  } else {
+    text += ` Ensuite vous avez ${middle.map((a) => `${a.name} à ${spokenTime(a.startMinutes)}`).join(", ")} et ${last.name} est prévu à ${spokenTime(last.startMinutes)}.`;
+  }
+  return text;
 }
 
 // Version parlée du même résumé, pour l'annonce vocale à l'activation du
 // mode mains-libres (voir assistant.js).
 export function briefingSpokenText(b) {
   const parts = [];
+  if (b.devisAutoToday > 0) parts.push(`${b.devisAutoToday} demande${b.devisAutoToday > 1 ? "s" : ""} de devis`);
   if (b.spamToday > 0) parts.push(`${b.spamToday} spam${b.spamToday > 1 ? "s" : ""} supprimé${b.spamToday > 1 ? "s" : ""}`);
-  if (b.devisAutoToday > 0) parts.push(`${b.devisAutoToday} devis répondu${b.devisAutoToday > 1 ? "s" : ""} automatiquement`);
   if (b.emailsPending > 0) parts.push(`${b.emailsPending} email${b.emailsPending > 1 ? "s" : ""} à valider`);
-  if (b.whatsappPending > 0) parts.push(`${b.whatsappPending} message${b.whatsappPending > 1 ? "s" : ""} WhatsApp à valider`);
-  if (parts.length === 0) return "Rien à signaler, tout est calme.";
-  return "Voici le debriefing : " + parts.join(", ") + ".";
+
+  const rdvNames = b.whatsappRendezvousPending || [];
+  const whatsappOther = Math.max(0, (b.whatsappPending || 0) - rdvNames.length);
+  if (whatsappOther > 0) parts.push(`${whatsappOther} message${whatsappOther > 1 ? "s" : ""} WhatsApp à valider`);
+  if (rdvNames.length === 1) {
+    parts.push(`un pour déplacer le rendez-vous de ${rdvNames[0]}`);
+  } else if (rdvNames.length > 1) {
+    parts.push(`${rdvNames.length} pour déplacer des rendez-vous : ${rdvNames.join(", ")}`);
+  }
+
+  const activityText = parts.length > 0 ? `Vous avez ${parts.join(", ")}.` : "Rien à signaler, tout est calme.";
+  return `Bonjour Steve. ${activityText} ${spokenAppointments(b.todayAppointments || [])}`;
 }
 
 function briefingCardHtml(b) {
@@ -86,25 +188,13 @@ export async function render(container) {
   }
 
   const settings = await getSettings();
-  const clients = await Store.getAll("clients");
-  const entries = await Store.getAll("planningEntries");
-  const visitTimesAll = await Store.getAll("visitTimes");
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
   const tomorrowStr = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  function appointmentsForDate(dateStr) {
-    const times = visitTimesAll.filter((v) => v.date === dateStr).sort((a, b) => a.startMinutes - b.startMinutes);
-    if (times.length > 0) {
-      return times.map((t) => ({ time: fmtMinutesOfDay(t.startMinutes), name: t.clientName, clientId: t.clientId, client: clients.find((c) => c.id === t.clientId) || null }));
-    }
-    const entry = entries.find((e) => e.date === dateStr);
-    return entry ? [{ time: "", name: entry.label, clientId: null, client: null }] : [];
-  }
-
-  const todayAppts = appointmentsForDate(todayStr);
-  const tomorrowAppts = appointmentsForDate(tomorrowStr);
+  const todayAppts = await appointmentsForDate(todayStr);
+  const tomorrowAppts = await appointmentsForDate(tomorrowStr);
 
   const briefing = await computeBriefing(todayStr);
 
@@ -125,7 +215,7 @@ export async function render(container) {
         <div class="list-item">
           <span class="muted" style="min-width:48px">${escapeHtml(a.time)}</span>
           <strong style="flex:1;margin-left:6px">${escapeHtml(a.name)}</strong>
-          ${a.client ? `<a href="${wazeUrl(a.client)}" style="text-decoration:none;font-size:19px;padding:4px 2px;line-height:1">🚗</a>` : ""}
+          ${a.client ? `<a href="${wazeUrl(a.client)}" class="waze-link" data-client-id="${a.client.id}" style="text-decoration:none;font-size:19px;padding:4px 2px;line-height:1">🚗</a>` : ""}
           ${a.clientId ? `<button type="button" class="today-timer-btn" data-client-id="${a.clientId}" data-client-name="${escapeHtml(a.name)}" style="background:none;border:none;font-size:19px;padding:4px 2px;line-height:1;font-family:inherit">⏱️</button>` : ""}
         </div>
       `).join("")}
@@ -158,6 +248,8 @@ export async function render(container) {
 
   await updateTodayTimerButtons(container);
 
+  wireWazeLinks(container);
+
   container.querySelectorAll(".today-timer-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -189,6 +281,8 @@ export async function render(container) {
           : `Temps enregistré : ${formatDuration(data.durationSeconds)}`
       );
       updateTodayTimerButtons(container);
+    } else if (event === "cancel") {
+      updateTodayTimerButtons(container);
     } else if (event === "error") {
       showToast(data);
     }
@@ -204,11 +298,12 @@ export async function render(container) {
         <strong>🚗 Il est temps de partir</strong>
         <p style="margin:6px 0">${escapeHtml(data.appt.clientName)} — trajet ≈ ${Math.round(data.travelMin)} min, RDV à ${fmtMinutesOfDay(data.appt.startMinutes)}</p>
         <div class="grid-2">
-          <a href="${wazeUrl(data.client || {})}" class="btn secondary block" style="text-decoration:none;text-align:center">🚗 Waze</a>
+          <a href="${wazeUrl(data.client || {})}" class="waze-link btn secondary block" data-client-id="${data.client?.id || ""}" style="text-decoration:none;text-align:center">🚗 Waze</a>
           <button type="button" class="btn block" id="dismiss-departure-btn">J'ai compris</button>
         </div>
       </div>
     `;
+    wireWazeLinks(banner);
     banner.querySelector("#dismiss-departure-btn").addEventListener("click", () => {
       banner.innerHTML = "";
     });
@@ -266,6 +361,18 @@ export async function render(container) {
       mini.querySelector("#huggy-play-btn").addEventListener("click", () => speak(speech));
     })
     .catch(() => {});
+}
+
+// Appuyer sur un bouton Waze pour se rendre chez un client signifie qu'on
+// quitte l'endroit où on est actuellement — utilisé pour arrêter le chrono
+// du chantier précédent au bon moment, sans dépendre du GPS en arrière-plan
+// (voir stopVisitForDifferentClient dans timer.js).
+function wireWazeLinks(root) {
+  root.querySelectorAll(".waze-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      stopVisitForDifferentClient(link.dataset.clientId || null).catch(() => {});
+    });
+  });
 }
 
 async function updateTodayTimerButtons(container) {
