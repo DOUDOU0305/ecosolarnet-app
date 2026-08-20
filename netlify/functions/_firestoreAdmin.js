@@ -98,4 +98,11 @@ async function listDocs(projectId, path) {
   return (data.documents || []).map((doc) => fromFirestoreFields(doc.fields || {}));
 }
 
-module.exports = { setDoc, listDocs };
+async function deleteDoc(projectId, path) {
+  const token = await getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}`;
+  const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok && res.status !== 404) throw new Error("Firestore delete failed: " + (await res.text()));
+}
+
+module.exports = { setDoc, listDocs, deleteDoc };
