@@ -72,4 +72,37 @@ async function setDoc(projectId, path, data) {
   return res.json();
 }
 
-module.exports = { setDoc };
+function fromFirestoreValue(v) {
+  if (v == null || "nullValue" in v) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("arrayValue" in v) return (v.arrayValue.values || []).map(fromFirestoreValue);
+  if ("mapValue" in v) return fromFirestoreFields(v.mapValue.fields || {});
+  return null;
+}
+
+function fromFirestoreFields(fields) {
+  const obj = {};
+  for (const [k, v] of Object.entries(fields)) obj[k] = fromFirestoreValue(v);
+  return obj;
+}
+
+async function listDocs(projectId, path) {
+  const token = await getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}?pageSize=300`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error("Firestore list failed: " + (await res.text()));
+  const data = await res.json();
+  return (data.documents || []).map((doc) => fromFirestoreFields(doc.fields || {}));
+}
+
+async function deleteDoc(projectId, path) {
+  const token = await getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}`;
+  const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok && res.status !== 404) throw new Error("Firestore delete failed: " + (await res.text()));
+}
+
+module.exports = { setDoc, listDocs, deleteDoc };

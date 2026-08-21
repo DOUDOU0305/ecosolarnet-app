@@ -20,6 +20,7 @@ const SYNCED_STORES = [
   "reminders",
   "ideas",
   "whatsappMessages",
+  "errorLogs",
 ];
 
 const BOOTSTRAP_KEY = "ecosolarnet_sync_bootstrapped_v1";

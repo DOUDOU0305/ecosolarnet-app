@@ -4,7 +4,7 @@ import { speak, speakAndWait } from "../huggyVoice.js";
 import { geocodeAddress, fullAddress, computeRouteKm, haversineKm } from "../geo.js";
 import { getActiveTimer, startVisit, stopVisit, formatDuration } from "../timer.js";
 import { computeBriefing, briefingSpokenText } from "./dashboard.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
 
 const ARRIVE_RADIUS_M = 150; // un peu plus large que le suivi GPS auto, puisque c'est une confirmation vocale explicite de l'utilisateur, pas une détection automatique.
 
@@ -249,7 +249,7 @@ async function processMessage(message) {
 
   const res = await fetch(`${FUNCTIONS_BASE}/assistant`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Secret": APP_SHARED_SECRET },
     body: JSON.stringify({
       message,
       clients: allClients.map((c) => ({ id: c.id, name: c.name })),

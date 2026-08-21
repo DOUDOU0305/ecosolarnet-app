@@ -21,9 +21,13 @@ import { cleanupHandsFree } from "./views/assistant.js";
 import { installSyncHooks, startFirebaseSync } from "./firebaseSync.js";
 import { askYesNo } from "./confirmDialog.js";
 import { showToast } from "./toast.js";
+import { installGlobalErrorLogging } from "./errorLog.js";
+import { runAutoBackupIfDue } from "./autoBackup.js";
 
+installGlobalErrorLogging();
 installSyncHooks();
 migrateIdeasIntoReminders();
+runAutoBackupIfDue();
 
 // Liste d'attente : si un client déjà en attente a en fait été nettoyé
 // récemment (dernier mois/semaine), on demande confirmation à Steve avant

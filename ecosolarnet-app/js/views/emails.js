@@ -3,7 +3,7 @@ import { escapeHtml, showToast } from "../toast.js";
 import { getAccessToken, isConnected, disconnect as gmailDisconnect } from "../gmailAuth.js";
 import { listInboxMessages, getMessage, trashMessage, untrashMessage, sendReply, getProfile } from "../gmail.js";
 import { speak } from "../huggyVoice.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
 
 const CATEGORY_LABELS = {
   devis: "Demande de devis",
@@ -388,7 +388,7 @@ async function runScan(container) {
 async function classify(full, settings) {
   const res = await fetch(`${FUNCTIONS_BASE}/classify-email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Secret": APP_SHARED_SECRET },
     body: JSON.stringify({
       subject: full.subject,
       from: full.from,

@@ -3,7 +3,7 @@ import { getSettings } from "../db.js";
 import { classifyRegion, regionRateRange, haversineKm } from "../geo.js";
 import { showToast, escapeHtml } from "../toast.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
 import { FREQUENCY_LABELS } from "../scheduling.js";
 import { isNative } from "../huggyVoice.js";
 
@@ -789,7 +789,7 @@ async function renderForm(container, id) {
       }
       const res = await fetch(`${FUNCTIONS_BASE}/analyze-photos`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "X-App-Secret": APP_SHARED_SECRET },
         body: JSON.stringify({ images, settings }),
       });
       if (!res.ok) throw new Error("Erreur serveur");

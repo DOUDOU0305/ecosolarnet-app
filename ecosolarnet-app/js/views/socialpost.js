@@ -1,7 +1,7 @@
 import { Store, uid } from "../db.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
 import { escapeHtml, showToast } from "../toast.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
 
 let photos = [];
 
@@ -159,7 +159,7 @@ export async function render(container) {
       );
       const res = await fetch(`${FUNCTIONS_BASE}/generate-social-post`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "X-App-Secret": APP_SHARED_SECRET },
         body: JSON.stringify({ images }),
       });
       if (!res.ok) throw new Error("Erreur serveur");

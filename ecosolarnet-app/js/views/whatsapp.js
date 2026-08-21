@@ -1,6 +1,6 @@
 import { Store } from "../db.js";
 import { escapeHtml, showToast } from "../toast.js";
-import { FUNCTIONS_BASE } from "../config.js";
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
 
 let selectMode = false;
 
@@ -74,7 +74,7 @@ export async function render(container) {
       try {
         const res = await fetch(`${FUNCTIONS_BASE}/whatsapp-send`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-App-Secret": APP_SHARED_SECRET },
           body: JSON.stringify({ to: msg.from, body: finalText }),
         });
         if (!res.ok) {

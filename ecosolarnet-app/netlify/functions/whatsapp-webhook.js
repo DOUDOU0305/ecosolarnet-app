@@ -1,11 +1,34 @@
+const crypto = require("crypto");
 const { withCors } = require("./_cors.js");
 const { setDoc } = require("./_firestoreAdmin.js");
 
 const WORKSPACE_ID = "ecosolarnet";
 const FIREBASE_PROJECT_ID = "ecosolarnet-54647";
+// Doit correspondre EXACTEMENT à l'URL configurée dans Twilio (Sandbox
+// Settings → "WHEN A MESSAGE COMES IN") — la validation de signature en
+// dépend, une URL différente ferait échouer la vérification même pour de
+// vrais messages Twilio.
+const WEBHOOK_URL = "https://frabjous-treacle-60d239.netlify.app/.netlify/functions/whatsapp-webhook";
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// Garantit que la requête vient bien de Twilio (et pas de n'importe qui
+// ayant deviné cette adresse) — sans ça, n'importe qui pourrait déclencher
+// de faux "devis" auto-envoyés ou faire tourner l'IA à volonté à nos frais.
+// Algorithme officiel Twilio : https://www.twilio.com/docs/usage/webhooks/webhooks-security
+function validateTwilioSignature(url, params, signature, authToken) {
+  if (!signature) return false;
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) data += key + params[key];
+  const expected = crypto.createHmac("sha1", authToken).update(Buffer.from(data, "utf-8")).digest("base64");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  } catch {
+    return false;
+  }
 }
 
 // Même texte fixe que pour les emails (js/views/emails.js) — ni chiffré ni
@@ -100,6 +123,13 @@ exports.handler = withCors(async function handler(event) {
   }
 
   const params = new URLSearchParams(event.body || "");
+  const signature = event.headers["x-twilio-signature"] || event.headers["X-Twilio-Signature"];
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!authToken || !validateTwilioSignature(WEBHOOK_URL, Object.fromEntries(params.entries()), signature, authToken)) {
+    console.error("[whatsapp-webhook] signature Twilio invalide ou absente — requête rejetée");
+    return { statusCode: 403, body: "Forbidden" };
+  }
+
   const from = params.get("From") || ""; // "whatsapp:+3247..."
   const body = params.get("Body") || "";
   const profileName = params.get("ProfileName") || "";
