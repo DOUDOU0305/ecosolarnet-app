@@ -1,6 +1,7 @@
 const { withCors } = require("./_cors.js");
+const { requireSecret } = require("./_auth.js");
 
-exports.handler = withCors(async function handler(event) {
+exports.handler = withCors(requireSecret(async function handler(event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -94,4 +95,4 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exac
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message || "Erreur inconnue" }) };
   }
-});
+}));

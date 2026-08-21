@@ -1,4 +1,5 @@
 const { withCors } = require("./_cors.js");
+const { requireSecret } = require("./_auth.js");
 const { setDoc, listDocs, deleteDoc } = require("./_firestoreAdmin.js");
 
 const WORKSPACE_ID = "ecosolarnet";
@@ -9,7 +10,7 @@ const RETENTION_DAYS = 60;
 // par jour (dateStr comme id, donc un second appel le même jour écrase le
 // premier plutôt que d'en créer un nouveau). Purge celles trop anciennes à
 // chaque appel pour ne jamais accumuler indéfiniment.
-exports.handler = withCors(async function handler(event) {
+exports.handler = withCors(requireSecret(async function handler(event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -37,4 +38,4 @@ exports.handler = withCors(async function handler(event) {
   } catch (err) {
     return { statusCode: 500, body: String(err) };
   }
-});
+}));
