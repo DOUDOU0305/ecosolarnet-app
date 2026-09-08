@@ -98,6 +98,16 @@ async function listDocs(projectId, path) {
   return (data.documents || []).map((doc) => fromFirestoreFields(doc.fields || {}));
 }
 
+async function getDoc(projectId, path) {
+  const token = await getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Firestore get failed: " + (await res.text()));
+  const data = await res.json();
+  return fromFirestoreFields(data.fields || {});
+}
+
 async function deleteDoc(projectId, path) {
   const token = await getAccessToken();
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}`;
@@ -105,4 +115,4 @@ async function deleteDoc(projectId, path) {
   if (!res.ok && res.status !== 404) throw new Error("Firestore delete failed: " + (await res.text()));
 }
 
-module.exports = { setDoc, listDocs, deleteDoc };
+module.exports = { setDoc, getDoc, listDocs, deleteDoc };
