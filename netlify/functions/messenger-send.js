@@ -1,5 +1,6 @@
 const { withCors } = require("./_cors.js");
 const { requireSecret } = require("./_auth.js");
+const { getPageToken } = require("./_metaToken.js");
 
 exports.handler = withCors(requireSecret(async function handler(event) {
   if (event.httpMethod !== "POST") {
@@ -16,7 +17,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: "psid et body requis" }) };
   }
 
-  const pageAccessToken = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+  const pageAccessToken = await getPageToken();
   if (!pageAccessToken) {
     return { statusCode: 500, body: JSON.stringify({ error: "Configuration Messenger manquante côté serveur" }) };
   }

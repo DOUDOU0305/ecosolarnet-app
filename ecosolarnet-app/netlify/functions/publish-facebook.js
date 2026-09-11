@@ -1,8 +1,9 @@
 const { withCors } = require("./_cors.js");
 const { requireSecret } = require("./_auth.js");
+const { getPageToken } = require("./_metaToken.js");
 
-// Publie sur la Page Facebook ECOSOLARNET avec le jeton de Page déjà stocké côté
-// Netlify (le même que Messenger). Le jeton ne sort jamais d'ici : ni dans les
+// Publie sur la Page Facebook ECOSOLARNET. Le jeton vient de _metaToken.js
+// (Firestore, sinon variable d'environnement) et ne sort jamais d'ici : ni dans les
 // réponses, ni dans les logs. L'appelant déclenche, il ne détient rien.
 //
 // POST { action: "check" }
@@ -15,10 +16,6 @@ const { requireSecret } = require("./_auth.js");
 //   - sans média : simple publication texte
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-
-function token() {
-  return process.env.FACEBOOK_PAGE_ACCESS_TOKEN || process.env.MESSENGER_PAGE_ACCESS_TOKEN;
-}
 
 function json(statusCode, body) {
   return { statusCode, body: JSON.stringify(body) };
@@ -37,15 +34,15 @@ function graphError(data, fallback) {
   };
 }
 
-async function graph(path, { method = "POST", params = {}, form = null } = {}) {
+async function graph(token, path, { method = "POST", params = {}, form = null } = {}) {
   const url = new URL(`${GRAPH}${path}`);
   let body;
 
   if (form) {
-    form.append("access_token", token());
+    form.append("access_token", token);
     body = form;
   } else {
-    const search = new URLSearchParams({ ...params, access_token: token() });
+    const search = new URLSearchParams({ ...params, access_token: token });
     if (method === "GET" || method === "DELETE") {
       for (const [k, v] of search) url.searchParams.set(k, v);
     } else {
@@ -63,10 +60,6 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  if (!token()) {
-    return json(500, { error: "Jeton de Page manquant côté serveur" });
-  }
-
   let payload;
   try {
     payload = JSON.parse(event.body || "{}");
@@ -76,16 +69,21 @@ exports.handler = withCors(requireSecret(async function handler(event) {
 
   const action = payload.action || "publish";
 
+  const token = await getPageToken();
+  if (!token) {
+    return json(500, { error: "Jeton de Page manquant — lancer meta-token-setup" });
+  }
+
   // --- Diagnostic ---------------------------------------------------------
   if (action === "check") {
-    const me = await graph("/me", { method: "GET", params: { fields: "id,name,category" } });
+    const me = await graph(token, "/me", { method: "GET", params: { fields: "id,name,category" } });
     if (!me.ok) {
       return json(502, { error: "Jeton invalide", detail: graphError(me.data, "identité illisible") });
     }
 
     // Un brouillon non publié : rien n'apparaît sur la Page, et ça suffit à
     // savoir si la permission d'écriture est accordée.
-    const draft = await graph("/me/feed", {
+    const draft = await graph(token, "/me/feed", {
       params: { message: "Test technique ECOSOLARNET", published: "false" },
     });
 
@@ -97,7 +95,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
       });
     }
 
-    if (draft.data.id) await graph(`/${draft.data.id}`, { method: "DELETE" });
+    if (draft.data.id) await graph(token, `/${draft.data.id}`, { method: "DELETE" });
     return json(200, { page: me.data, canPublish: true });
   }
 
@@ -116,7 +114,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   let result;
 
   if (videoUrl) {
-    result = await graph("/me/videos", {
+    result = await graph(token, "/me/videos", {
       params: { file_url: videoUrl, description: message },
     });
   } else if (photoBase64) {
@@ -129,11 +127,11 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     const form = new FormData();
     form.append("source", new Blob([buffer], { type: "image/jpeg" }), "photo.jpg");
     if (message) form.append("caption", message);
-    result = await graph("/me/photos", { form });
+    result = await graph(token, "/me/photos", { form });
   } else if (photoUrl) {
-    result = await graph("/me/photos", { params: { url: photoUrl, caption: message } });
+    result = await graph(token, "/me/photos", { params: { url: photoUrl, caption: message } });
   } else {
-    result = await graph("/me/feed", { params: { message } });
+    result = await graph(token, "/me/feed", { params: { message } });
   }
 
   if (!result.ok) {
