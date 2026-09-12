@@ -125,3 +125,20 @@ Un futur développeur aura besoin de :
 1. L'accès aux comptes listés au point 2 (Steve doit transmettre les identifiants séparément et de façon sécurisée — jamais par ce document).
 2. Ce fichier (`HANDOFF.md`) et le code source lui-même, qui contient beaucoup de commentaires expliquant le "pourquoi" des choix faits.
 3. Comprendre que ce projet privilégie délibérément la simplicité (pas de build step, pas de framework, pas de dépendances npm côté fonctions serveur) pour rester maintenable par quelqu'un qui reprendrait le projet sans configuration compliquée à reproduire.
+
+## ⚠️ Deux copies des fonctions Netlify — attention au piège
+
+Ce dépôt contient **deux** dossiers `netlify/functions` :
+
+- `netlify/functions/` (à la racine)
+- `ecosolarnet-app/netlify/functions/` ← **c'est celui-ci qui est réellement déployé**
+
+Modifier uniquement celui de la racine ne change rien en production. Le 2026-09-12, le
+jeton Facebook permanent a été correctement enregistré mais restait invisible pendant une
+demi-heure parce que `_firestoreAdmin.js` de la racine exportait `getDoc` alors que la copie
+déployée, plus ancienne, ne l'exportait pas — l'erreur était avalée par un `try/catch` et le
+code retombait silencieusement sur l'ancien jeton expiré.
+
+**Règle : toute modification d'une fonction doit être copiée dans les deux dossiers**, et il
+vaut mieux vérifier après déploiement que le comportement a réellement changé, plutôt que de
+supposer qu'un push suffit.
