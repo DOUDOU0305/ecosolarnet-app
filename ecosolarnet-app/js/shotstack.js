@@ -15,19 +15,19 @@ import { FUNCTIONS_BASE, SITE_ORIGIN, APP_SHARED_SECRET } from "./config.js";
 
 const HEADERS = { "content-type": "application/json", "X-App-Secret": APP_SHARED_SECRET };
 
-// Les dix musiques libres de droits déjà déposées avec l'app. Les noms affichés
-// décrivent l'ambiance : "Carefree" ne dit rien, "léger" si.
+// Huit musiques libres de droits (Pixabay), choisies le 2026-09-12 pour remplacer
+// le lot précédent, daté et kitsch. La licence Pixabay autorise l'usage commercial,
+// réseaux sociaux compris, sans attribution. Les noms affichés décrivent l'ambiance :
+// le titre d'origine ne dit rien à personne.
 export const MUSIQUES = [
-  { fichier: "beauty-flow.m4a", nom: "Posé" },
-  { fichier: "wallpaper.m4a", nom: "Discret" },
-  { fichier: "carefree.m4a", nom: "Léger" },
-  { fichier: "happy-alley.m4a", nom: "Positif" },
-  { fichier: "cheery-monday.m4a", nom: "Enjoué" },
-  { fichier: "life-of-riley.m4a", nom: "Entraînant" },
-  { fichier: "marty-gots-a-plan.m4a", nom: "Rythmé" },
-  { fichier: "pixel-peeker-polka-faster.m4a", nom: "Vif" },
-  { fichier: "fluffing-a-duck.m4a", nom: "Comique" },
-  { fichier: "monkeys-spinning-monkeys.m4a", nom: "Drôle" },
+  { fichier: "funk-publicite.m4a", nom: "Funk pub" },
+  { fichier: "pop-dance.m4a", nom: "Pop dance" },
+  { fichier: "dance-enjoue.m4a", nom: "Dance" },
+  { fichier: "funk-joyeux.m4a", nom: "Funk joyeux" },
+  { fichier: "corporate-positif.m4a", nom: "Positif" },
+  { fichier: "corporate-promo.m4a", nom: "Promo" },
+  { fichier: "vlog-hiphop.m4a", nom: "Vlog hip-hop" },
+  { fichier: "groove-moderne.m4a", nom: "Groove" },
 ];
 
 export function urlMusique(fichier) {
