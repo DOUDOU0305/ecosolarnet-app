@@ -2,12 +2,15 @@ import { Store, uid } from "../db.js";
 import { resizeImage, blobToDataURL } from "../photo.js";
 import { escapeHtml, showToast } from "../toast.js";
 import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "../config.js";
+import { MUSIQUES, monter, publierSurFacebook } from "../shotstack.js";
 
 let photos = [];
+let videoMontee = null;
 
 function resetDraft() {
   photos.forEach((p) => URL.revokeObjectURL(p.url));
   photos = [];
+  videoMontee = null;
 }
 
 export async function render(container) {
@@ -42,6 +45,29 @@ export async function render(container) {
         <textarea id="sp-caption-input" rows="6" style="width:100%"></textarea>
       </div>
 
+      <div id="sp-montage-zone" style="display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
+        <h3 style="margin:0 0 4px">Monter une vidéo</h3>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Vos photos deviennent une vidéo avec musique, prête à publier.</p>
+
+        <label>Musique</label>
+        <div id="sp-musiques" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px"></div>
+
+        <label>Format</label>
+        <div style="display:flex;gap:8px;margin:8px 0 16px">
+          <button type="button" class="btn secondary small sp-format" data-format="publication">Publication</button>
+          <button type="button" class="btn secondary small sp-format" data-format="story">Story / Reel</button>
+        </div>
+
+        <button type="button" class="btn block" id="sp-monter-btn">🎬 Monter la vidéo</button>
+        <p id="sp-montage-etat" class="muted" style="margin:10px 0 0;font-size:13px"></p>
+
+        <div id="sp-video-zone" style="display:none;margin-top:16px">
+          <video id="sp-video" controls playsinline style="width:100%;border-radius:14px;background:#000"></video>
+          <button type="button" class="btn block" id="sp-publier-btn" style="margin-top:12px">📘 Publier sur ma Page Facebook</button>
+          <p class="muted" style="margin:8px 0 0;font-size:12px">La vidéo part telle quelle, avec le texte ci-dessus.</p>
+        </div>
+      </div>
+
       <button type="button" class="btn block" id="sp-validate-btn" style="display:none;margin-top:14px">✅ Valider cette publication</button>
     </div>
 
@@ -58,8 +84,10 @@ export async function render(container) {
   `;
 
   function refreshDraftUI() {
-    container.querySelector("#sp-generate-btn").style.display = photos.length > 0 ? "" : "none";
-    container.querySelector("#sp-validate-btn").style.display = photos.length > 0 ? "" : "none";
+    const visible = photos.length > 0 ? "" : "none";
+    container.querySelector("#sp-generate-btn").style.display = visible;
+    container.querySelector("#sp-validate-btn").style.display = visible;
+    container.querySelector("#sp-montage-zone").style.display = visible;
   }
 
   function renderPhotoGrid() {
@@ -172,6 +200,97 @@ export async function render(container) {
     } finally {
       generateBtn.disabled = false;
       generateBtn.textContent = "🤖 Générer le texte avec l'IA";
+    }
+  });
+
+  // --- Montage vidéo -------------------------------------------------------
+  let musiqueChoisie = MUSIQUES[0].fichier;
+  let formatChoisi = "publication";
+
+  const zoneMusiques = container.querySelector("#sp-musiques");
+  function dessinerMusiques() {
+    zoneMusiques.innerHTML = MUSIQUES.map((m) => `
+      <button type="button" class="btn ${m.fichier === musiqueChoisie ? "" : "secondary"} small sp-musique"
+              data-fichier="${m.fichier}">${m.nom}</button>
+    `).join("");
+    zoneMusiques.querySelectorAll(".sp-musique").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        musiqueChoisie = btn.dataset.fichier;
+        dessinerMusiques();
+      });
+    });
+  }
+  dessinerMusiques();
+
+  function dessinerFormats() {
+    container.querySelectorAll(".sp-format").forEach((btn) => {
+      btn.classList.toggle("secondary", btn.dataset.format !== formatChoisi);
+    });
+  }
+  container.querySelectorAll(".sp-format").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      formatChoisi = btn.dataset.format;
+      dessinerFormats();
+    });
+  });
+  dessinerFormats();
+
+  const monterBtn = container.querySelector("#sp-monter-btn");
+  const etat = container.querySelector("#sp-montage-etat");
+
+  monterBtn.addEventListener("click", async () => {
+    if (photos.length === 0) return;
+    monterBtn.disabled = true;
+    container.querySelector("#sp-video-zone").style.display = "none";
+    try {
+      // Le montage passe par un service externe : plusieurs dizaines de secondes.
+      // Sans ce fil d'avancement, l'attente ressemble à un plantage.
+      videoMontee = await monter({
+        photos,
+        musique: musiqueChoisie,
+        format: formatChoisi,
+        avancement: (message) => { etat.textContent = message; },
+      });
+      etat.textContent = "Vidéo prête.";
+      const video = container.querySelector("#sp-video");
+      video.src = videoMontee;
+      container.querySelector("#sp-video-zone").style.display = "block";
+    } catch (err) {
+      etat.textContent = "";
+      showToast(err.message || "Le montage a échoué");
+    } finally {
+      monterBtn.disabled = false;
+    }
+  });
+
+  container.querySelector("#sp-publier-btn").addEventListener("click", async () => {
+    const caption = container.querySelector("#sp-caption-input").value.trim();
+    if (!videoMontee) return;
+    if (!caption) {
+      showToast("Écrivez ou générez d'abord le texte de la publication");
+      return;
+    }
+    const bouton = container.querySelector("#sp-publier-btn");
+    bouton.disabled = true;
+    bouton.textContent = "Publication en cours…";
+    try {
+      const res = await publierSurFacebook({ videoUrl: videoMontee, message: caption });
+      showToast("Publié sur votre Page Facebook");
+      await Store.put("socialPosts", {
+        id: uid(),
+        createdAt: Date.now(),
+        caption,
+        videoUrl: videoMontee,
+        facebookId: res.id || null,
+        photos: photos.map((p) => ({ id: p.id, blob: p.blob })),
+        status: "shared",
+      });
+      await render(container);
+    } catch (err) {
+      showToast(err.message || "La publication a échoué");
+    } finally {
+      bouton.disabled = false;
+      bouton.textContent = "📘 Publier sur ma Page Facebook";
     }
   });
 
