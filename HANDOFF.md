@@ -142,3 +142,20 @@ code retombait silencieusement sur l'ancien jeton expiré.
 **Règle : toute modification d'une fonction doit être copiée dans les deux dossiers**, et il
 vaut mieux vérifier après déploiement que le comportement a réellement changé, plutôt que de
 supposer qu'un push suffit.
+
+## Publication Facebook automatisée (2026-09-12)
+
+- `publish-facebook` publie texte / photo / vidéo sur la Page **Ecosolarnet**
+  (`113763354907912`). Action `check` vérifie l'accès sans rien rendre public.
+- `meta-token-setup` transforme un jeton utilisateur temporaire en **jeton de Page permanent**
+  (vérifié auprès de Meta : `type: PAGE`, sans date d'expiration) rangé dans Firestore à
+  `artisans/ecosolarnet/secrets/facebook`.
+- `_metaToken.js` est la source unique du jeton (Firestore, repli sur la variable
+  d'environnement). `messenger-send` l'utilise aussi — l'ancien jeton d'environnement avait
+  expiré le 26/08/2026, laissant Messenger muet deux semaines sans alerte.
+- `meta-token.html` (page non indexée) permet de redéposer un jeton en un copier-coller si Meta
+  révoque tout un jour, sans passer par les variables Netlify ni par un redéploiement.
+- App Meta : **EcoSolarNet**, id `2141660433450329`, cas d'utilisation « Tout gérer sur votre
+  Page » + « Gérer les messages et les contenus sur Instagram ».
+- Instagram n'est pas encore branché : il faudra un compte professionnel relié à la Page et les
+  autorisations `instagram_basic` / `instagram_content_publish`.
