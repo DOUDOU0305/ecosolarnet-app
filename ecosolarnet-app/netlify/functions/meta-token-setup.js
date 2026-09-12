@@ -59,8 +59,36 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     }
 
     const token = await getPageToken();
+
+    // Interroge Meta sur le jeton réellement en place : a-t-il une date d'expiration,
+    // et quelles autorisations porte-t-il ? Le jeton lui-même n'est jamais renvoyé.
+    let expiry = null;
+    const secret = process.env.META_APP_SECRET || process.env.MESSENGER_APP_SECRET;
+    if (token && secret) {
+      try {
+        const debugUrl = new URL(`${GRAPH}/debug_token`);
+        debugUrl.searchParams.set("input_token", token);
+        debugUrl.searchParams.set("access_token", `${APP_ID}|${secret}`);
+        const debugRes = await fetch(debugUrl);
+        const debug = await debugRes.json();
+        const info = (debug && debug.data) || {};
+        expiry = {
+          valid: info.is_valid ?? null,
+          type: info.type || null,
+          neverExpires: info.expires_at === 0 || info.expires_at === undefined,
+          expiresAt: info.expires_at
+            ? new Date(info.expires_at * 1000).toISOString()
+            : null,
+          scopes: info.scopes || [],
+        };
+      } catch (err) {
+        expiry = { error: (err.message || String(err)).slice(0, 200) };
+      }
+    }
+
     return json(200, {
       configured: Boolean(token),
+      expiry,
       source: stored && stored.pageAccessToken ? "firestore" : (token ? "env" : "aucune"),
       docPath: DOC_PATH,
       docFound: Boolean(stored),
