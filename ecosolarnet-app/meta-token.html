@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ECOSOLARNET — jeton Facebook</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: #f2f2f7; color: #1c1c1e;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #000; color: #f2f2f7; } }
+  main { width: 100%; max-width: 520px; }
+  .card {
+    background: #fff; border-radius: 18px; padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark) { .card { background: #1c1c1e; } }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  p.sub { margin: 0 0 20px; color: #8e8e93; font-size: 15px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #8e8e93; }
+  textarea {
+    width: 100%; box-sizing: border-box; min-height: 110px; padding: 12px;
+    border: 1px solid rgba(128,128,128,.35); border-radius: 12px; font-size: 15px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical;
+    background: transparent; color: inherit;
+  }
+  button {
+    width: 100%; margin-top: 16px; padding: 15px; border: 0; border-radius: 14px;
+    background: #0a84ff; color: #fff; font-size: 17px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #out { margin-top: 18px; font-size: 15px; white-space: pre-wrap; }
+  .ok { color: #34c759; } .ko { color: #ff3b30; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Jeton Facebook</h1>
+    <p class="sub">Collez ici le jeton copié dans l'explorateur Meta. Il est transformé en jeton
+      permanent et rangé côté serveur — il n'est ni affiché ni conservé dans cette page.</p>
+
+    <label for="t">Jeton d'accès (commence par EAA…)</label>
+    <textarea id="t" spellcheck="false" autocomplete="off" placeholder="EAAeb1C1dhVkBS…"></textarea>
+
+    <button id="go">Enregistrer le jeton</button>
+    <div id="out"></div>
+  </div>
+</main>
+
+<script type="module">
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "./js/config.js";
+
+const field = document.getElementById("t");
+const button = document.getElementById("go");
+const out = document.getElementById("out");
+
+button.addEventListener("click", async () => {
+  const userToken = field.value.trim();
+  if (!userToken) { out.textContent = "Collez d'abord le jeton."; return; }
+
+  button.disabled = true;
+  out.textContent = "Échange en cours…";
+
+  try {
+    const res = await fetch(`${FUNCTIONS_BASE}/meta-token-setup`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-app-secret": APP_SHARED_SECRET },
+      body: JSON.stringify({ action: "run", userToken }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      // Le jeton ne doit pas rester dans le champ une fois l'opération réussie.
+      field.value = "";
+      out.className = "ok";
+      out.textContent =
+        `Jeton enregistré pour la Page « ${data.page.name} ».\n` +
+        (data.neverExpires ? "Il n'expire pas." : "Attention : il a une date d'expiration.");
+    } else {
+      out.className = "ko";
+      out.textContent = `Échec : ${data.error || "erreur inconnue"}\n${data.detail?.message || ""}`;
+    }
+  } catch (err) {
+    out.className = "ko";
+    out.textContent = `Échec réseau : ${err.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
