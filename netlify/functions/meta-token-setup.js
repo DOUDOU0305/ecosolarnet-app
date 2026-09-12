@@ -49,13 +49,18 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return json(200, { configured: Boolean(token) });
   }
 
-  const userToken = process.env.META_USER_TOKEN;
+  // Le jeton utilisateur peut venir de deux endroits, jamais d'une conversation :
+  // soit une variable d'environnement Netlify, soit — et c'est le chemin privilégié —
+  // directement de la page Meta, postée par le navigateur de Steve. Dans ce second cas
+  // il transite du champ de l'explorateur vers ce serveur sans jamais être affiché.
+  const userToken = (typeof payload.userToken === "string" && payload.userToken.trim())
+    || process.env.META_USER_TOKEN;
   const appSecret = process.env.META_APP_SECRET || process.env.MESSENGER_APP_SECRET;
 
   if (!userToken) {
     return json(400, {
       error: "META_USER_TOKEN absent",
-      hint: "Ajouter la variable d'environnement META_USER_TOKEN chez Netlify, puis redéployer.",
+      hint: "Fournir userToken dans la requête, ou définir META_USER_TOKEN chez Netlify.",
     });
   }
   if (!appSecret) {
