@@ -45,8 +45,30 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   const { getPageToken } = require("./_metaToken.js");
 
   if (payload.action === "status") {
+    // Diagnostic : d'où vient le jeton réellement utilisé. Aucune valeur de jeton
+    // n'est renvoyée, seulement sa provenance et l'état de la lecture Firestore.
+    const { getDoc } = require("./_firestoreAdmin.js");
+    const { FIREBASE_PROJECT_ID, DOC_PATH } = require("./_metaToken.js");
+
+    let stored = null;
+    let readError = null;
+    try {
+      stored = await getDoc(FIREBASE_PROJECT_ID, DOC_PATH);
+    } catch (err) {
+      readError = err.message ? err.message.slice(0, 300) : String(err);
+    }
+
     const token = await getPageToken();
-    return json(200, { configured: Boolean(token) });
+    return json(200, {
+      configured: Boolean(token),
+      source: stored && stored.pageAccessToken ? "firestore" : (token ? "env" : "aucune"),
+      docPath: DOC_PATH,
+      docFound: Boolean(stored),
+      docKeys: stored ? Object.keys(stored) : [],
+      pageName: stored ? stored.pageName || null : null,
+      updatedAt: stored ? stored.updatedAt || null : null,
+      readError,
+    });
   }
 
   // Le jeton utilisateur peut venir de deux endroits, jamais d'une conversation :
