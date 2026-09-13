@@ -194,13 +194,19 @@ supposer qu'un push suffit.
   leurs chiffres. Actions : `facebook`, `instagram`, `tout` (defaut), champ `limite`.
 - Sert le skill Claude `conseiller-social-media`, qui tient un journal de ce qui marche : sans
   retour de resultats, le conseil reste generique. Steve n'a rien a relever lui-meme.
-- **Etat reel au 2026-09-13, apres ajout de `pages_read_engagement`** : les publications de la
-  Page et du compte Instagram remontent ; les j'aime et commentaires Instagram aussi. Manquent
-  encore les reactions et commentaires Facebook (`pages_read_user_content`), la portee Facebook
-  (`read_insights`) et la portee Instagram (`instagram_manage_insights`).
-- **Cocher la permission dans l'explorateur Graph API et regenerer le jeton suffit** : verifie le
-  2026-09-13, l'autorisation est accordee a l'app cote Meta et le jeton deja enregistre en
-  profite, sans avoir a le recoller sur `meta-token.html`.
+- **Etat au 2026-09-13, jeton complet** : Facebook remonte publications, reactions, commentaires,
+  partages et clics ; Instagram remonte publications, j'aime, commentaires, **portee**,
+  enregistrements et partages. Seule la **portee par publication Facebook** manque : Meta a retire
+  les metriques `post_impressions*` des Pages, aucune variante ne repond. Ce n'est pas une
+  permission manquante et ca ne se recuperera pas.
+- Les trois permissions `read_insights`, `pages_read_user_content` et `instagram_manage_insights`
+  n'existaient dans **aucun cas d'utilisation de l'app** : c'est pour ca qu'elles n'apparaissaient
+  ni dans le menu ni dans la recherche de l'explorateur. Il faut les ajouter dans
+  App > Cas d'utilisation > Personnaliser > Autorisations et fonctionnalites (bouton Ajouter),
+  et seulement ensuite elles deviennent selectionnables dans l'explorateur.
+- Une permission simplement **cochee** dans l'explorateur profite parfois au jeton deja enregistre
+  (verifie le 2026-09-13 pour `pages_read_engagement`), mais ce n'est pas fiable : apres un ajout
+  de permissions, recoller le jeton regenere sur `meta-token.html` est le seul chemin sur.
 - Action `diagnostic` : teste chaque route de lecture et renvoie le refus exact de Meta. C'est par
   la qu'il faut commencer quand quelque chose cesse de remonter.
 - Les noms de metriques d'insights changent d'une version de l'API a l'autre, et une seule
