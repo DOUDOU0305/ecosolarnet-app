@@ -47,8 +47,9 @@ async function graphGet(token, chemin, params = {}) {
   }
 }
 
-// Les insights peuvent être refusés (permission) ou absents (post trop récent,
-// métrique retirée par Meta). Aucun de ces cas ne doit faire échouer la lecture.
+// Les insights peuvent être refusés (permission), absents (post trop récent) ou porter
+// un nom que Meta a retiré d'une version à l'autre — et une seule métrique invalide fait
+// échouer tout le lot. Aucun de ces cas ne doit faire échouer la lecture.
 async function insights(token, id, metriques) {
   const res = await graphGet(token, `/${id}/insights`, { metric: metriques.join(",") });
   if (!res.ok) return { valeurs: null, erreur: graphError(res.data, "insights indisponibles") };
@@ -58,6 +59,22 @@ async function insights(token, id, metriques) {
     if (v && typeof v.value === "number") valeurs[entree.name] = v.value;
   }
   return { valeurs, erreur: null };
+}
+
+// Meta retire régulièrement des métriques. Plutôt que de figer une liste qui cassera
+// silencieusement, on demande le lot une fois ; s'il est refusé, on teste chaque
+// métrique séparément et on retient celles qui répondent, pour toutes les publications
+// suivantes de la même lecture.
+async function metriquesValides(token, id, candidates) {
+  const lot = await insights(token, id, candidates);
+  if (lot.valeurs) return { retenues: candidates, erreur: null };
+
+  const retenues = [];
+  for (const m of candidates) {
+    const essai = await insights(token, id, [m]);
+    if (essai.valeurs) retenues.push(m);
+  }
+  return { retenues, erreur: retenues.length ? null : lot.erreur };
 }
 
 // Trois routes lisent les publications d'une Page, et elles n'exigent pas les mêmes
@@ -116,15 +133,25 @@ async function lireFacebook(token, limite) {
     return { erreur: graphError(posts.data, "lecture des publications impossible") };
   }
 
-  let insightsRefuses = null;
+  const liste = posts.data.data || [];
+
+  const CANDIDATES_FB = [
+    "post_impressions_unique",
+    "post_impressions",
+    "post_engaged_users",
+    "post_clicks",
+    "post_reactions_by_type_total",
+  ];
+  const sonde = liste.length
+    ? await metriquesValides(token, liste[0].id, CANDIDATES_FB)
+    : { retenues: [], erreur: null };
+  let insightsRefuses = sonde.erreur ? sonde.erreur.message : null;
 
   const publications = await Promise.all(
-    (posts.data.data || []).map(async (p) => {
-      const stat = await insights(token, p.id, [
-        "post_impressions_unique",
-        "post_engaged_users",
-        "post_clicks",
-      ]);
+    liste.map(async (p) => {
+      const stat = sonde.retenues.length
+        ? await insights(token, p.id, sonde.retenues)
+        : { valeurs: null, erreur: null };
       if (stat.erreur && !insightsRefuses) insightsRefuses = stat.erreur.message;
       return {
         id: p.id,
@@ -133,10 +160,16 @@ async function lireFacebook(token, limite) {
         image: p.full_picture || null,
         // Le texte sert à reconnaître la publication dans le journal, pas à l'analyser.
         debutTexte: p.message ? p.message.slice(0, 120) : null,
-        reactions: p.reactions ? p.reactions.summary.total_count : null,
+        reactions: p.reactions
+          ? p.reactions.summary.total_count
+          : (stat.valeurs && stat.valeurs.post_reactions_by_type_total !== undefined
+              ? Object.values(stat.valeurs.post_reactions_by_type_total).reduce((a, b) => a + b, 0)
+              : null),
         commentaires: p.comments ? p.comments.summary.total_count : null,
         partages: p.shares ? p.shares.count : 0,
-        portee: stat.valeurs ? stat.valeurs.post_impressions_unique ?? null : null,
+        portee: stat.valeurs
+          ? stat.valeurs.post_impressions_unique ?? stat.valeurs.post_impressions ?? null
+          : null,
         interactions: stat.valeurs ? stat.valeurs.post_engaged_users ?? null : null,
         clics: stat.valeurs ? stat.valeurs.post_clicks ?? null : null,
       };
@@ -169,11 +202,19 @@ async function lireInstagram(token, limite) {
     return { compte, publications: [], erreur: graphError(medias.data, "lecture des médias impossible").message };
   }
 
-  let insightsRefuses = null;
+  const liste = medias.data.data || [];
+
+  const CANDIDATES_IG = ["reach", "saved", "shares", "total_interactions", "views"];
+  const sonde = liste.length
+    ? await metriquesValides(token, liste[0].id, CANDIDATES_IG)
+    : { retenues: [], erreur: null };
+  let insightsRefuses = sonde.erreur ? sonde.erreur.message : null;
 
   const publications = await Promise.all(
-    (medias.data.data || []).map(async (m) => {
-      const stat = await insights(token, m.id, ["reach", "saved", "shares"]);
+    liste.map(async (m) => {
+      const stat = sonde.retenues.length
+        ? await insights(token, m.id, sonde.retenues)
+        : { valeurs: null, erreur: null };
       if (stat.erreur && !insightsRefuses) insightsRefuses = stat.erreur.message;
       return {
         id: m.id,
