@@ -194,12 +194,17 @@ supposer qu'un push suffit.
   leurs chiffres. Actions : `facebook`, `instagram`, `tout` (defaut), champ `limite`.
 - Sert le skill Claude `conseiller-social-media`, qui tient un journal de ce qui marche : sans
   retour de resultats, le conseil reste generique. Steve n'a rien a relever lui-meme.
-- **Etat reel au 2026-09-13** : Instagram remonte publications, j'aime et commentaires ;
-  la portee et les enregistrements sont refuses (`instagram_manage_insights` absente) et
-  Facebook refuse la lecture des publications (`pages_read_engagement` absente).
-- Pour debloquer : regenerer le jeton dans l'explorateur Graph API de l'app 2141660433450329
-  en cochant `pages_read_engagement`, `read_insights` et `instagram_manage_insights`, puis le
-  coller sur `meta-token.html` comme la premiere fois.
+- **Etat reel au 2026-09-13, apres ajout de `pages_read_engagement`** : les publications de la
+  Page et du compte Instagram remontent ; les j'aime et commentaires Instagram aussi. Manquent
+  encore les reactions et commentaires Facebook (`pages_read_user_content`), la portee Facebook
+  (`read_insights`) et la portee Instagram (`instagram_manage_insights`).
+- **Cocher la permission dans l'explorateur Graph API et regenerer le jeton suffit** : verifie le
+  2026-09-13, l'autorisation est accordee a l'app cote Meta et le jeton deja enregistre en
+  profite, sans avoir a le recoller sur `meta-token.html`.
+- Action `diagnostic` : teste chaque route de lecture et renvoie le refus exact de Meta. C'est par
+  la qu'il faut commencer quand quelque chose cesse de remonter.
+- Les noms de metriques d'insights changent d'une version de l'API a l'autre, et une seule
+  metrique invalide fait echouer tout le lot : la fonction sonde d'abord ce que Meta accepte.
 - La fonction ne tombe jamais a cause d'une permission manquante : elle renvoie ce qu'elle peut
   et met `null` + un message dans `insightsIndisponibles`. Un `null` n'est pas un zero.
 
