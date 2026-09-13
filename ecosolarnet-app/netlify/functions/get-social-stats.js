@@ -60,20 +60,29 @@ async function insights(token, id, metriques) {
   return { valeurs, erreur: null };
 }
 
+// Trois routes lisent les publications d'une Page, et elles n'exigent pas les mêmes
+// permissions : /me/published_posts se contente de pages_read_engagement, alors que
+// /me/posts réclame pages_read_user_content parce qu'il inclut aussi ce que des tiers
+// ont publié sur la Page. On prend la première qui répond.
+const ROUTES_POSTS = ["/me/published_posts", "/me/feed", "/me/posts"];
+
 async function lireFacebook(token, limite) {
-  const posts = await graphGet(token, "/me/posts", {
-    limit: limite,
-    fields: [
-      "id",
-      "created_time",
-      "message",
-      "permalink_url",
-      "full_picture",
-      "shares",
-      "reactions.summary(true).limit(0)",
-      "comments.summary(true).limit(0)",
-    ].join(","),
-  });
+  const champs = [
+    "id",
+    "created_time",
+    "message",
+    "permalink_url",
+    "full_picture",
+    "shares",
+    "reactions.summary(true).limit(0)",
+    "comments.summary(true).limit(0)",
+  ].join(",");
+
+  let posts = null;
+  for (const route of ROUTES_POSTS) {
+    posts = await graphGet(token, route, { limit: limite, fields: champs });
+    if (posts.ok) break;
+  }
 
   if (!posts.ok) {
     return { erreur: graphError(posts.data, "lecture des publications impossible") };
