@@ -15,19 +15,16 @@ import { FUNCTIONS_BASE, SITE_ORIGIN, APP_SHARED_SECRET } from "./config.js";
 
 const HEADERS = { "content-type": "application/json", "X-App-Secret": APP_SHARED_SECRET };
 
-// Huit musiques libres de droits (Pixabay), choisies le 2026-09-12 pour remplacer
-// le lot précédent, daté et kitsch. La licence Pixabay autorise l'usage commercial,
-// réseaux sociaux compris, sans attribution. Les noms affichés décrivent l'ambiance :
-// le titre d'origine ne dit rien à personne.
+// Les quatre musiques retenues par Steve le 2026-09-13, après écoute, parmi une
+// sélection Pixabay de huit. Quatre suffisent : au-delà, choisir devient une corvée
+// à chaque publication. Licence Pixabay — usage commercial et réseaux sociaux
+// autorisés, sans attribution. Les noms affichés décrivent l'ambiance, pas le titre
+// d'origine, qui ne dit rien à personne.
 export const MUSIQUES = [
-  { fichier: "funk-publicite.m4a", nom: "Funk pub" },
   { fichier: "pop-dance.m4a", nom: "Pop dance" },
   { fichier: "dance-enjoue.m4a", nom: "Dance" },
-  { fichier: "funk-joyeux.m4a", nom: "Funk joyeux" },
   { fichier: "corporate-positif.m4a", nom: "Positif" },
-  { fichier: "corporate-promo.m4a", nom: "Promo" },
   { fichier: "vlog-hiphop.m4a", nom: "Vlog hip-hop" },
-  { fichier: "groove-moderne.m4a", nom: "Groove" },
 ];
 
 export function urlMusique(fichier) {
