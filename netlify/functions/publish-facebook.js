@@ -99,6 +99,20 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return json(200, { page: me.data, canPublish: true });
   }
 
+  // --- Informations de la Page --------------------------------------------
+  // Sert notamment à récupérer la couverture et la photo de profil telles que
+  // Steve les a mises depuis son téléphone, sans lui demander de les transférer.
+  if (action === "infos") {
+    const infos = await graph(token, "/me", {
+      method: "GET",
+      params: { fields: "id,name,category,fan_count,link,cover{source},picture.width(720){url},about,phone,website" },
+    });
+    if (!infos.ok) {
+      return json(502, { error: "Lecture impossible", detail: graphError(infos.data, "échec") });
+    }
+    return json(200, infos.data);
+  }
+
   // --- Publication --------------------------------------------------------
   if (action !== "publish") {
     return json(400, { error: `Action inconnue : ${action}` });
