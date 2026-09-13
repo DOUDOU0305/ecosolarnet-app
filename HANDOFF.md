@@ -175,21 +175,25 @@ supposer qu'un push suffit.
   supprime fait echouer le rendu avec "This URL is not accessible".
 - Page d'ecoute des musiques : `musiques.html`.
 
-## Instagram — etat au 2026-09-13 (bloque cote Meta)
+## Instagram — branche et operationnel (2026-09-13)
 
-Tout est pret **sauf l'association du compte Instagram a la Page** :
+- Compte `steve.peters0305`, professionnel, **associe a la Page Ecosolarnet**
+  (`instagram_business_account` = 17841456965298636, 109 abonnes).
+- App Meta sur **"API setup with Facebook login"** — la variante qui passe par le jeton
+  de Page. L'autre ("API Instagram avec connexion Instagram", permissions
+  `instagram_business_*`) utilise un jeton separe et ne convient pas.
+- Jeton de Page permanent avec `instagram_basic` et `instagram_content_publish`.
+- `publish-instagram.js` publie en trois temps (creer le conteneur, attendre le
+  transcodage, publier) : le transcodage depasse le delai d'une fonction Netlify.
+  Format **REELS** obligatoire, le type VIDEO n'est plus accepte.
+- Premier Reel publie le 2026-09-13 : https://www.instagram.com/reel/DdO2yWlmNTl/
 
-- Compte `steve.peters0305`, deja **professionnel** (109 abonnes).
-- App Meta basculee sur **"API setup with Facebook login"** — c'est la variante qui
-  passe par le jeton de Page. L'autre ("API Instagram avec connexion Instagram",
-  permissions `instagram_business_*`) utilise un jeton separe et ne convient pas.
-- Le jeton de Page stocke porte bien `instagram_basic` et `instagram_content_publish`
-  (verifie via meta-token-setup, action status).
-- **Manque** : `instagram_business_account` sur la Page. L'association lancee depuis
-  Business Suite (Associer Instagram) finit sur une page d'erreur Meta
-  ("Sorry, something went wrong", business.facebook.com/page/instagram/oidclink).
+## Reste a faire (sans urgence)
 
-A reprendre : reessayer l'association depuis Business Suite, ou depuis l'app Instagram
-(Parametres > Type de compte et outils > associer une Page Facebook). Verifier ensuite
-avec l'action "infos" de publish-facebook : le champ instagram doit contenir
-instagram_business_account.
+- Resserrer les zones desservies de la fiche Google : elle couvre Bruxelles et Namur,
+  ce qui dilue la pertinence autour de Gerpinnes et Charleroi.
+- Une Page Facebook vide "Steve Peters" (id 100088108914382, 0 abonne, 0 publication)
+  traine dans le compte. Le bouton de suppression est introuvable dans la nouvelle
+  experience Pages — sans consequence, a reprendre un jour.
+- Le site ecosolarnet.be (Joomla) pointe vers le profil personnel et non vers la Page.
+  Demande de correction envoyee au prestataire le 2026-09-13.
