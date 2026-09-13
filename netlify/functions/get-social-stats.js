@@ -186,6 +186,20 @@ exports.handler = withCors(requireSecret(async (event) => {
     return json(500, { error: "Jeton de Page manquant — lancer meta-token-setup" });
   }
 
+  // Quand rien ne remonte, la question est toujours la même : quelle route passe, et
+  // laquelle est refusée pour quelle permission ? Cette action répond sans toucher
+  // au jeton ni rien publier.
+  if (action === "diagnostic") {
+    const routes = {};
+    for (const route of ROUTES_POSTS) {
+      const res = await graphGet(token, route, { limit: 1, fields: "id,created_time" });
+      routes[route] = res.ok
+        ? { ok: true, publications: (res.data.data || []).length }
+        : { ok: false, erreur: graphError(res.data, "refus sans message") };
+    }
+    return json(200, { version: "routes-fallback", routes });
+  }
+
   if (action === "facebook") return json(200, { facebook: await lireFacebook(token, limite) });
   if (action === "instagram") return json(200, { instagram: await lireInstagram(token, limite) });
   if (action !== "tout") return json(400, { error: `Action inconnue : ${action}` });
