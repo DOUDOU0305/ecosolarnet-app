@@ -135,12 +135,18 @@ async function lireFacebook(token, limite) {
 
   const liste = posts.data.data || [];
 
+  // Meta a retiré la plupart des métriques de portée par publication ; on tente les
+  // survivantes et leurs variantes, la sonde ne gardera que ce qui répond vraiment.
   const CANDIDATES_FB = [
     "post_impressions_unique",
     "post_impressions",
+    "post_impressions_organic_unique",
+    "post_impressions_fan",
     "post_engaged_users",
     "post_clicks",
     "post_reactions_by_type_total",
+    "post_video_views",
+    "blue_reels_play_count",
   ];
   const sonde = liste.length
     ? await metriquesValides(token, liste[0].id, CANDIDATES_FB)
@@ -168,7 +174,13 @@ async function lireFacebook(token, limite) {
         commentaires: p.comments ? p.comments.summary.total_count : null,
         partages: p.shares ? p.shares.count : 0,
         portee: stat.valeurs
-          ? stat.valeurs.post_impressions_unique ?? stat.valeurs.post_impressions ?? null
+          ? stat.valeurs.post_impressions_unique
+            ?? stat.valeurs.post_impressions
+            ?? stat.valeurs.post_impressions_organic_unique
+            ?? null
+          : null,
+        vues: stat.valeurs
+          ? stat.valeurs.blue_reels_play_count ?? stat.valeurs.post_video_views ?? null
           : null,
         interactions: stat.valeurs ? stat.valeurs.post_engaged_users ?? null : null,
         clics: stat.valeurs ? stat.valeurs.post_clicks ?? null : null,
