@@ -110,7 +110,18 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     if (!infos.ok) {
       return json(502, { error: "Lecture impossible", detail: graphError(infos.data, "échec") });
     }
-    return json(200, infos.data);
+    // Le compte Instagram se demande à part : sans l'autorisation instagram_basic,
+    // Graph rejette toute la requête si le champ y figure. Isolé, son échec
+    // devient une information utile au lieu de tout faire tomber.
+    const insta = await graph(token, "/me", {
+      method: "GET",
+      params: { fields: "instagram_business_account{id,username,followers_count},connected_instagram_account{id,username}" },
+    });
+
+    return json(200, {
+      ...infos.data,
+      instagram: insta.ok ? insta.data : { erreur: graphError(insta.data, "illisible") },
+    });
   }
 
   // --- Publication --------------------------------------------------------
