@@ -62,26 +62,54 @@ async function insights(token, id, metriques) {
 
 // Trois routes lisent les publications d'une Page, et elles n'exigent pas les mêmes
 // permissions : /me/published_posts se contente de pages_read_engagement, alors que
-// /me/posts réclame pages_read_user_content parce qu'il inclut aussi ce que des tiers
-// ont publié sur la Page. On prend la première qui répond.
+// /me/feed et /me/posts en réclament d'autres parce qu'ils incluent aussi ce que des
+// tiers ont publié sur la Page. On prend la première qui répond.
 const ROUTES_POSTS = ["/me/published_posts", "/me/feed", "/me/posts"];
 
-async function lireFacebook(token, limite) {
-  const champs = [
-    "id",
-    "created_time",
-    "message",
-    "permalink_url",
-    "full_picture",
-    "shares",
-    "reactions.summary(true).limit(0)",
-    "comments.summary(true).limit(0)",
-  ].join(",");
+// Même logique pour les champs : lire les commentaires d'une publication, c'est lire
+// du contenu écrit par des utilisateurs, ce que le jeton n'a pas forcément le droit de
+// faire — et un seul champ refusé fait échouer toute la requête. On redescend donc par
+// paliers jusqu'à ce que ça passe, et on dit ce qu'on a perdu en route.
+const PALIERS_CHAMPS = [
+  {
+    nom: "complet",
+    champs: "id,created_time,message,permalink_url,full_picture,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)",
+  },
+  {
+    nom: "sans les commentaires",
+    champs: "id,created_time,message,permalink_url,full_picture,shares,reactions.summary(true).limit(0)",
+  },
+  {
+    nom: "sans les commentaires ni les réactions",
+    champs: "id,created_time,message,permalink_url,full_picture,shares",
+  },
+  {
+    nom: "publications seules",
+    champs: "id,created_time,message,permalink_url,full_picture",
+  },
+];
 
+async function lireFacebook(token, limite) {
+  // 1. Quelle route accepte ce jeton ? On le demande avec le strict minimum, pour que
+  //    seul le droit de lire la liste soit en jeu.
+  let route = null;
+  let echec = null;
+  for (const candidate of ROUTES_POSTS) {
+    const res = await graphGet(token, candidate, { limit: 1, fields: "id" });
+    if (res.ok) { route = candidate; break; }
+    echec = echec || res;
+  }
+  if (!route) {
+    return { erreur: graphError(echec && echec.data, "lecture des publications impossible") };
+  }
+
+  // 2. Sur cette route, on demande le maximum de champs, puis on redescend.
   let posts = null;
-  for (const route of ROUTES_POSTS) {
-    posts = await graphGet(token, route, { limit: limite, fields: champs });
-    if (posts.ok) break;
+  let palier = null;
+  for (const niveau of PALIERS_CHAMPS) {
+    const res = await graphGet(token, route, { limit: limite, fields: niveau.champs });
+    if (res.ok) { posts = res; palier = niveau; break; }
+    posts = res;
   }
 
   if (!posts.ok) {
@@ -105,9 +133,9 @@ async function lireFacebook(token, limite) {
         image: p.full_picture || null,
         // Le texte sert à reconnaître la publication dans le journal, pas à l'analyser.
         debutTexte: p.message ? p.message.slice(0, 120) : null,
-        reactions: (p.reactions && p.reactions.summary && p.reactions.summary.total_count) || 0,
-        commentaires: (p.comments && p.comments.summary && p.comments.summary.total_count) || 0,
-        partages: (p.shares && p.shares.count) || 0,
+        reactions: p.reactions ? p.reactions.summary.total_count : null,
+        commentaires: p.comments ? p.comments.summary.total_count : null,
+        partages: p.shares ? p.shares.count : 0,
         portee: stat.valeurs ? stat.valeurs.post_impressions_unique ?? null : null,
         interactions: stat.valeurs ? stat.valeurs.post_engaged_users ?? null : null,
         clics: stat.valeurs ? stat.valeurs.post_clicks ?? null : null,
@@ -120,6 +148,7 @@ async function lireFacebook(token, limite) {
   return {
     page: page.ok ? page.data : null,
     publications,
+    champsLus: palier.nom,
     insightsIndisponibles: insightsRefuses,
   };
 }
