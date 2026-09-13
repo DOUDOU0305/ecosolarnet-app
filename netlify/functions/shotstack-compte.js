@@ -1,5 +1,6 @@
 const { withCors } = require("./_cors.js");
 const { requireSecret } = require("./_auth.js");
+const { getShotstack } = require("./_shotstackCle.js");
 
 // Dit dans quel environnement Shotstack tourne l'app et si la clé en place est
 // acceptée en production. Shotstack délivre deux clés distinctes par compte :
@@ -14,7 +15,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const apiKey = process.env.SHOTSTACK_API_KEY;
+  const { apiKey, env: envActif } = await getShotstack();
   if (!apiKey) {
     return { statusCode: 500, body: JSON.stringify({ error: "Clé Shotstack absente" }) };
   }
@@ -36,7 +37,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   return {
     statusCode: 200,
     body: JSON.stringify({
-      environnementConfigure: process.env.SHOTSTACK_ENV === "v1" ? "v1 (production)" : "stage (test)",
+      environnementConfigure: envActif === "v1" ? "v1 (production)" : "stage (test)",
       cleValideEnTest: stage.accepte,
       cleValideEnProduction: production.accepte,
       detail: { stage, production },

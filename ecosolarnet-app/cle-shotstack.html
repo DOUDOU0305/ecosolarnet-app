@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ECOSOLARNET — clé de montage vidéo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+    font: 17px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: #f2f2f7; color: #1c1c1e;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #000; color: #f2f2f7; } }
+  main { width: 100%; max-width: 520px; }
+  .card {
+    background: #fff; border-radius: 18px; padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark) { .card { background: #1c1c1e; } }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  p.sub { margin: 0 0 20px; color: #8e8e93; font-size: 15px; }
+  .etat {
+    margin: 0 0 20px; padding: 12px 14px; border-radius: 12px; font-size: 14px;
+    background: rgba(142,142,147,.14);
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #8e8e93; }
+  textarea {
+    width: 100%; box-sizing: border-box; min-height: 90px; padding: 12px;
+    border: 1px solid rgba(128,128,128,.35); border-radius: 12px; font-size: 15px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical;
+    background: transparent; color: inherit;
+  }
+  button {
+    width: 100%; margin-top: 16px; padding: 15px; border: 0; border-radius: 14px;
+    background: #0a84ff; color: #fff; font-size: 17px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #sortie { margin-top: 18px; font-size: 15px; white-space: pre-wrap; }
+  .ok { color: #34c759; } .ko { color: #ff3b30; } .attention { color: #ff9500; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Clé de montage vidéo</h1>
+    <p class="sub">Collez ici la clé Shotstack. Elle est vérifiée avant d'être enregistrée, et
+      n'apparaît nulle part ensuite.</p>
+
+    <div class="etat" id="etat">Vérification de l'état actuel…</div>
+
+    <label for="cle">Clé API Shotstack</label>
+    <textarea id="cle" spellcheck="false" autocomplete="off" placeholder="Collez la clé ici"></textarea>
+
+    <button id="valider">Enregistrer la clé</button>
+    <div id="sortie"></div>
+  </div>
+</main>
+
+<script type="module">
+import { FUNCTIONS_BASE, APP_SHARED_SECRET } from "./js/config.js";
+
+const champ = document.getElementById("cle");
+const bouton = document.getElementById("valider");
+const sortie = document.getElementById("sortie");
+const etat = document.getElementById("etat");
+
+const entetes = { "content-type": "application/json", "X-App-Secret": APP_SHARED_SECRET };
+
+async function rafraichirEtat() {
+  try {
+    const res = await fetch(`${FUNCTIONS_BASE}/shotstack-cle`, {
+      method: "POST", headers: entetes, body: JSON.stringify({ action: "etat" }),
+    });
+    const data = await res.json();
+    etat.textContent = !data.configuree
+      ? "Aucune clé enregistrée pour le moment."
+      : data.filigrane
+        ? "Clé de test en place — les vidéos sortent avec un filigrane."
+        : "Clé de production en place — les vidéos sortent sans filigrane.";
+  } catch {
+    etat.textContent = "État actuel indisponible.";
+  }
+}
+rafraichirEtat();
+
+bouton.addEventListener("click", async () => {
+  const cle = champ.value.trim();
+  if (!cle) { sortie.textContent = "Collez d'abord la clé."; return; }
+
+  bouton.disabled = true;
+  sortie.className = "";
+  sortie.textContent = "Vérification auprès de Shotstack…";
+
+  try {
+    const res = await fetch(`${FUNCTIONS_BASE}/shotstack-cle`, {
+      method: "POST", headers: entetes,
+      body: JSON.stringify({ action: "enregistrer", cle }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      // La clé ne doit pas rester affichée une fois enregistrée.
+      champ.value = "";
+      sortie.className = data.filigrane ? "attention" : "ok";
+      sortie.textContent = data.message;
+      rafraichirEtat();
+    } else {
+      sortie.className = "ko";
+      sortie.textContent = `${data.error || "Échec"}${data.indice ? "\n" + data.indice : ""}`;
+    }
+  } catch (err) {
+    sortie.className = "ko";
+    sortie.textContent = `Échec réseau : ${err.message}`;
+  } finally {
+    bouton.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

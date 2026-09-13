@@ -1,20 +1,17 @@
 const { withCors } = require("./_cors.js");
 const { requireSecret } = require("./_auth.js");
-
-function bases() {
-  const env = process.env.SHOTSTACK_ENV === "v1" ? "v1" : "stage";
-  return {
-    ingest: `https://api.shotstack.io/ingest/${env}`,
-    edit: `https://api.shotstack.io/edit/${env}`,
-  };
-}
+const { getShotstack } = require("./_shotstackCle.js");
 
 exports.handler = withCors(requireSecret(async function handler(event) {
   if (event.httpMethod !== "GET") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const apiKey = process.env.SHOTSTACK_API_KEY;
+  const { apiKey, env } = await getShotstack();
+  const bases = {
+    ingest: `https://api.shotstack.io/ingest/${env}`,
+    edit: `https://api.shotstack.io/edit/${env}`,
+  };
   if (!apiKey) {
     return { statusCode: 500, body: JSON.stringify({ error: "Clé Shotstack manquante côté serveur" }) };
   }
@@ -24,7 +21,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: "Paramètres invalides" }) };
   }
 
-  const url = type === "source" ? `${bases().ingest}/sources/${id}` : `${bases().edit}/render/${id}`;
+  const url = type === "source" ? `${bases.ingest}/sources/${id}` : `${bases.edit}/render/${id}`;
 
   try {
     const res = await fetch(url, { headers: { "x-api-key": apiKey, accept: "application/json" } });

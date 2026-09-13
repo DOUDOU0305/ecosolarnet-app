@@ -1,10 +1,6 @@
 const { withCors } = require("./_cors.js");
 const { requireSecret } = require("./_auth.js");
-
-function editBase() {
-  const env = process.env.SHOTSTACK_ENV === "v1" ? "v1" : "stage";
-  return `https://api.shotstack.io/edit/${env}`;
-}
+const { getShotstack } = require("./_shotstackCle.js");
 
 // 5 secondes par photo, c'est long : l'œil a tout vu au bout de deux. On enchaîne
 // plus vite, avec un fondu entre les plans pour que la coupe ne soit pas sèche.
@@ -24,7 +20,8 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const apiKey = process.env.SHOTSTACK_API_KEY;
+  const { apiKey, env } = await getShotstack();
+  const editBase = `https://api.shotstack.io/edit/${env}`;
   if (!apiKey) {
     return { statusCode: 500, body: JSON.stringify({ error: "Clé Shotstack manquante côté serveur" }) };
   }
@@ -87,7 +84,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   };
 
   try {
-    const res = await fetch(`${editBase()}/render`, {
+    const res = await fetch(`${editBase}/render`, {
       method: "POST",
       headers: { "x-api-key": apiKey, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
