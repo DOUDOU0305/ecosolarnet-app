@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ECOSOLARNET — écouter les musiques</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    font: 17px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: #f2f2f7; color: #1c1c1e;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #000; color: #f2f2f7; } }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  p.sub { margin: 0 0 24px; color: #8e8e93; font-size: 15px; }
+  .piste {
+    background: #fff; border-radius: 16px; padding: 16px 18px; margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  }
+  @media (prefers-color-scheme: dark) { .piste { background: #1c1c1e; } }
+  .titre { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .ambiance { color: #8e8e93; font-size: 14px; margin-top: 2px; }
+  audio { width: 100%; margin-top: 12px; }
+  .note {
+    margin-top: 28px; padding: 16px 18px; border-radius: 16px;
+    background: rgba(142,142,147,.12); font-size: 14px; color: #8e8e93;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Les huit musiques</h1>
+  <p class="sub">Écoutez-les, puis dites-moi lesquelles garder. Celles que vous ne choisissez pas
+    seront retirées de l'app.</p>
+
+  <div id="liste"></div>
+
+  <div class="note">
+    Toutes libres de droits (Pixabay) : usage commercial autorisé, réseaux sociaux compris,
+    sans attribution et sans frais.
+  </div>
+</main>
+
+<script type="module">
+import { MUSIQUES, urlMusique } from "./js/shotstack.js";
+
+// Une seule piste à la fois : si deux se lancent ensemble, on ne peut plus les comparer.
+const liste = document.getElementById("liste");
+liste.innerHTML = MUSIQUES.map((m, i) => `
+  <div class="piste">
+    <div class="titre">${i + 1}. ${m.nom}</div>
+    <div class="ambiance">${m.fichier.replace(".m4a", "").replace(/-/g, " ")}</div>
+    <audio controls preload="none" src="${urlMusique(m.fichier)}"></audio>
+  </div>
+`).join("");
+
+const lecteurs = [...document.querySelectorAll("audio")];
+lecteurs.forEach((lecteur) => {
+  lecteur.addEventListener("play", () => {
+    lecteurs.filter((autre) => autre !== lecteur).forEach((autre) => autre.pause());
+  });
+});
+</script>
+</body>
+</html>
