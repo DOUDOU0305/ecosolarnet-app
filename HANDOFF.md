@@ -188,6 +188,21 @@ supposer qu'un push suffit.
   Format **REELS** obligatoire, le type VIDEO n'est plus accepte.
 - Premier Reel publie le 2026-09-13 : https://www.instagram.com/reel/DdO2yWlmNTl/
 
+## Resultats des publications (2026-09-13)
+
+- `get-social-stats` lit les dernieres publications de la Page et du compte Instagram avec
+  leurs chiffres. Actions : `facebook`, `instagram`, `tout` (defaut), champ `limite`.
+- Sert le skill Claude `conseiller-social-media`, qui tient un journal de ce qui marche : sans
+  retour de resultats, le conseil reste generique. Steve n'a rien a relever lui-meme.
+- **Etat reel au 2026-09-13** : Instagram remonte publications, j'aime et commentaires ;
+  la portee et les enregistrements sont refuses (`instagram_manage_insights` absente) et
+  Facebook refuse la lecture des publications (`pages_read_engagement` absente).
+- Pour debloquer : regenerer le jeton dans l'explorateur Graph API de l'app 2141660433450329
+  en cochant `pages_read_engagement`, `read_insights` et `instagram_manage_insights`, puis le
+  coller sur `meta-token.html` comme la premiere fois.
+- La fonction ne tombe jamais a cause d'une permission manquante : elle renvoie ce qu'elle peut
+  et met `null` + un message dans `insightsIndisponibles`. Un `null` n'est pas un zero.
+
 ## Reste a faire (sans urgence)
 
 - Resserrer les zones desservies de la fiche Google : elle couvre Bruxelles et Namur,
