@@ -159,3 +159,18 @@ supposer qu'un push suffit.
   Page » + « Gérer les messages et les contenus sur Instagram ».
 - Instagram n'est pas encore branché : il faudra un compte professionnel relié à la Page et les
   autorisations `instagram_basic` / `instagram_content_publish`.
+
+## Montage video Shotstack (2026-09-13)
+
+- La cle et l'environnement Shotstack sont ranges dans Firestore
+  (`artisans/ecosolarnet/secrets/shotstack`), plus dans les variables Netlify.
+  La page `cle-shotstack.html` les remplace en un copier-coller, sans redeploiement,
+  et verifie la cle aupres de Shotstack avant de l'enregistrer.
+- Environnement actif : **v1 (production)** — les rendus sortent sans filigrane.
+  L'environnement "stage" est gratuit mais incruste un filigrane SHOTSTACK.
+- `shotstack-compte` dit a tout moment quel environnement est actif et si la cle
+  est acceptee en production, sans jamais renvoyer la cle.
+- Musiques : quatre titres Pixabay dans `ecosolarnet-app/audio/`, listes dans
+  `js/shotstack.js`. Shotstack va les chercher par URL publique : un fichier
+  supprime fait echouer le rendu avec "This URL is not accessible".
+- Page d'ecoute des musiques : `musiques.html`.
