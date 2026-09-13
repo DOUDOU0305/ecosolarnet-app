@@ -174,3 +174,22 @@ supposer qu'un push suffit.
   `js/shotstack.js`. Shotstack va les chercher par URL publique : un fichier
   supprime fait echouer le rendu avec "This URL is not accessible".
 - Page d'ecoute des musiques : `musiques.html`.
+
+## Instagram — etat au 2026-09-13 (bloque cote Meta)
+
+Tout est pret **sauf l'association du compte Instagram a la Page** :
+
+- Compte `steve.peters0305`, deja **professionnel** (109 abonnes).
+- App Meta basculee sur **"API setup with Facebook login"** — c'est la variante qui
+  passe par le jeton de Page. L'autre ("API Instagram avec connexion Instagram",
+  permissions `instagram_business_*`) utilise un jeton separe et ne convient pas.
+- Le jeton de Page stocke porte bien `instagram_basic` et `instagram_content_publish`
+  (verifie via meta-token-setup, action status).
+- **Manque** : `instagram_business_account` sur la Page. L'association lancee depuis
+  Business Suite (Associer Instagram) finit sur une page d'erreur Meta
+  ("Sorry, something went wrong", business.facebook.com/page/instagram/oidclink).
+
+A reprendre : reessayer l'association depuis Business Suite, ou depuis l'app Instagram
+(Parametres > Type de compte et outils > associer une Page Facebook). Verifier ensuite
+avec l'action "infos" de publish-facebook : le champ instagram doit contenir
+instagram_business_account.
