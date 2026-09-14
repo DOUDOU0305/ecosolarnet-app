@@ -10,7 +10,8 @@ const { getPageToken } = require("./_metaToken.js");
 //   Vérifie l'identité de la Page et le droit de publier, sans rien rendre public :
 //   on crée une publication NON publiée puis on la supprime aussitôt.
 //
-// POST { action: "publish", message, photoBase64?, photoUrl?, videoUrl?, scheduledPublishTime? }
+// POST { action: "publish", message, photoBase64?, photoUrl?, photoUrls?, videoUrl?, scheduledPublishTime? }
+//   photoUrls : plusieurs photos -> une publication qui les porte toutes
 //   scheduledPublishTime : horodatage Unix en secondes pour une parution différée
 //   - photoBase64 : une photo encodée en base64 (sans en-tête "data:")
 //   - photoUrl / videoUrl : un média accessible publiquement par URL
@@ -139,13 +140,39 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   const quand = Number(payload.scheduledPublishTime) || null;
   const differe = quand ? { published: "false", scheduled_publish_time: String(quand) } : {};
 
-  if (!message && !photoBase64 && !photoUrl && !videoUrl) {
+  if (!message && !photoBase64 && !photoUrl && !videoUrl && !(Array.isArray(payload.photoUrls) && payload.photoUrls.length)) {
     return json(400, { error: "Rien à publier" });
   }
 
   let result;
 
-  if (videoUrl) {
+  // Plusieurs photos : Facebook n'a pas de route "carrousel". On dépose chaque
+  // photo sans la publier, ce qui donne un identifiant par image, puis on crée
+  // une publication qui les porte toutes.
+  const photoUrls = Array.isArray(payload.photoUrls) ? payload.photoUrls.filter(Boolean) : [];
+
+  if (photoUrls.length > 1) {
+    const ids = [];
+    for (const url of photoUrls) {
+      const depot = await graph(token, "/me/photos", {
+        params: { url, published: "false", temporary: "true" },
+      });
+      if (!depot.ok || !depot.data.id) {
+        return json(502, {
+          error: "Dépôt d'une photo refusé",
+          detail: graphError(depot.data, "échec"),
+          photo: url,
+        });
+      }
+      ids.push(depot.data.id);
+    }
+
+    const params = { message, ...differe };
+    ids.forEach((id, rang) => {
+      params[`attached_media[${rang}]`] = JSON.stringify({ media_fbid: id });
+    });
+    result = await graph(token, "/me/feed", { params });
+  } else if (videoUrl) {
     result = await graph(token, "/me/videos", {
       params: { file_url: videoUrl, description: message, ...differe },
     });

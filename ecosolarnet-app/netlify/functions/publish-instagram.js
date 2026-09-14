@@ -11,7 +11,7 @@ const { getPageToken } = require("./_metaToken.js");
 // côté appelant.
 //
 // POST { action: "compte" }                        -> identité du compte Instagram
-// POST { action: "creer", videoUrl | photoUrl, message } -> crée le conteneur, renvoie son id
+// POST { action: "creer", videoUrl | photoUrl | photoUrls[], message } -> crée le conteneur, renvoie son id
 // POST { action: "etat", creationId }              -> où en est le transcodage
 // POST { action: "publier", creationId }           -> publie et renvoie le lien
 
@@ -79,7 +79,40 @@ exports.handler = withCors(requireSecret(async function handler(event) {
 
   if (payload.action === "creer") {
     const { videoUrl, photoUrl, message } = payload;
-    if (!videoUrl && !photoUrl) return json(400, { error: "videoUrl ou photoUrl requis" });
+    const photoUrls = Array.isArray(payload.photoUrls) ? payload.photoUrls.filter(Boolean) : [];
+
+    // Carrousel : chaque photo devient un conteneur "enfant", puis un conteneur
+    // parent les rassemble. Instagram en accepte de 2 à 10.
+    if (photoUrls.length > 1) {
+      const enfants = [];
+      for (const url of photoUrls) {
+        const res = await graph(token, `/${compte.id}/media`, {
+          params: { image_url: url, is_carousel_item: "true" },
+        });
+        if (!res.ok || !res.data.id) {
+          return json(502, {
+            error: "Création d'une image du carrousel refusée",
+            detail: graphError(res.data, "échec"),
+            photo: url,
+          });
+        }
+        enfants.push(res.data.id);
+      }
+
+      const parent = await graph(token, `/${compte.id}/media`, {
+        params: {
+          media_type: "CAROUSEL",
+          children: enfants.join(","),
+          caption: typeof message === "string" ? message : "",
+        },
+      });
+      if (!parent.ok || !parent.data.id) {
+        return json(502, { error: "Création du carrousel refusée", detail: graphError(parent.data, "échec") });
+      }
+      return json(200, { creationId: parent.data.id, images: enfants.length });
+    }
+
+    if (!videoUrl && !photoUrl) return json(400, { error: "videoUrl, photoUrl ou photoUrls requis" });
 
     // Une photo se dépose en conteneur IMAGE, sans transcodage : elle est prête
     // presque tout de suite. Une vidéo verticale passe par le format Reels — le
