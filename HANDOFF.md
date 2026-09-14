@@ -214,6 +214,18 @@ supposer qu'un push suffit.
 - La fonction ne tombe jamais a cause d'une permission manquante : elle renvoie ce qu'elle peut
   et met `null` + un message dans `insightsIndisponibles`. Un `null` n'est pas un zero.
 
+## Publications programmees (2026-09-14)
+
+- `publish-facebook` accepte `scheduledPublishTime` (horodatage Unix en secondes) : la publication
+  part toute seule entre 10 minutes et 6 mois plus tard, sans qu'aucune machine soit allumee.
+- `publish-instagram` accepte desormais `photoUrl` en plus de `videoUrl` (conteneur IMAGE, sans
+  transcodage). Instagram **ne sait pas** programmer : il faut une tache planifiee cote Mac.
+- Une publication programmee par l'API **n'apparait pas** dans le planificateur de Meta Business
+  Suite, alors qu'elle existe : `get-social-stats` avec `{"action":"programmees"}` la liste
+  (endpoint `/me/scheduled_posts`). Ne pas conclure d'un ecran vide que la programmation a echoue.
+- Instagram exige une image accessible par URL publique : les visuels sont deposes dans
+  `ecosolarnet-app/visuels/` et servis par Netlify.
+
 ## Reste a faire (sans urgence)
 
 - Resserrer les zones desservies de la fiche Google : elle couvre Bruxelles et Namur,
