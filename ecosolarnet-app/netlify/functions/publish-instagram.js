@@ -11,7 +11,7 @@ const { getPageToken } = require("./_metaToken.js");
 // côté appelant.
 //
 // POST { action: "compte" }                        -> identité du compte Instagram
-// POST { action: "creer", videoUrl, message }      -> crée le conteneur, renvoie son id
+// POST { action: "creer", videoUrl | photoUrl, message } -> crée le conteneur, renvoie son id
 // POST { action: "etat", creationId }              -> où en est le transcodage
 // POST { action: "publier", creationId }           -> publie et renvoie le lien
 
@@ -78,17 +78,20 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   }
 
   if (payload.action === "creer") {
-    const { videoUrl, message } = payload;
-    if (!videoUrl) return json(400, { error: "videoUrl requis" });
+    const { videoUrl, photoUrl, message } = payload;
+    if (!videoUrl && !photoUrl) return json(400, { error: "videoUrl ou photoUrl requis" });
 
-    // Les vidéos verticales passent par le format Reels : le type VIDEO classique
-    // n'est plus accepté pour le fil Instagram.
+    // Une photo se dépose en conteneur IMAGE, sans transcodage : elle est prête
+    // presque tout de suite. Une vidéo verticale passe par le format Reels — le
+    // type VIDEO classique n'est plus accepté pour le fil Instagram.
+    const media = photoUrl
+      ? { image_url: photoUrl }
+      : { media_type: "REELS", video_url: videoUrl, share_to_feed: "true" };
+
     const res = await graph(token, `/${compte.id}/media`, {
       params: {
-        media_type: "REELS",
-        video_url: videoUrl,
+        ...media,
         caption: typeof message === "string" ? message : "",
-        share_to_feed: "true",
       },
     });
     if (!res.ok) {
