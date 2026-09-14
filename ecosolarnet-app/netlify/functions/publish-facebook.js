@@ -10,7 +10,8 @@ const { getPageToken } = require("./_metaToken.js");
 //   Vérifie l'identité de la Page et le droit de publier, sans rien rendre public :
 //   on crée une publication NON publiée puis on la supprime aussitôt.
 //
-// POST { action: "publish", message, photoBase64?, photoUrl?, videoUrl? }
+// POST { action: "publish", message, photoBase64?, photoUrl?, videoUrl?, scheduledPublishTime? }
+//   scheduledPublishTime : horodatage Unix en secondes pour une parution différée
 //   - photoBase64 : une photo encodée en base64 (sans en-tête "data:")
 //   - photoUrl / videoUrl : un média accessible publiquement par URL
 //   - sans média : simple publication texte
@@ -132,6 +133,12 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
   const { photoBase64, photoUrl, videoUrl } = payload;
 
+  // Publication différée : Facebook accepte une date de parution entre 10 minutes
+  // et 6 mois. On la passe telle quelle à Graph, qui refusera une date hors bornes.
+  // Steve peut annuler ou modifier depuis Meta Business Suite jusqu'à la parution.
+  const quand = Number(payload.scheduledPublishTime) || null;
+  const differe = quand ? { published: "false", scheduled_publish_time: String(quand) } : {};
+
   if (!message && !photoBase64 && !photoUrl && !videoUrl) {
     return json(400, { error: "Rien à publier" });
   }
@@ -140,7 +147,7 @@ exports.handler = withCors(requireSecret(async function handler(event) {
 
   if (videoUrl) {
     result = await graph(token, "/me/videos", {
-      params: { file_url: videoUrl, description: message },
+      params: { file_url: videoUrl, description: message, ...differe },
     });
   } else if (photoBase64) {
     // Une photo envoyée en base64 pèse un tiers de plus que le fichier d'origine,
@@ -152,11 +159,12 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     const form = new FormData();
     form.append("source", new Blob([buffer], { type: "image/jpeg" }), "photo.jpg");
     if (message) form.append("caption", message);
+    for (const [cle, valeur] of Object.entries(differe)) form.append(cle, valeur);
     result = await graph(token, "/me/photos", { form });
   } else if (photoUrl) {
-    result = await graph(token, "/me/photos", { params: { url: photoUrl, caption: message } });
+    result = await graph(token, "/me/photos", { params: { url: photoUrl, caption: message, ...differe } });
   } else {
-    result = await graph(token, "/me/feed", { params: { message } });
+    result = await graph(token, "/me/feed", { params: { message, ...differe } });
   }
 
   if (!result.ok) {
@@ -167,5 +175,12 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   }
 
   const id = result.data.post_id || result.data.id;
-  return json(200, { ok: true, id, url: id ? `https://www.facebook.com/${id}` : null });
+  return json(200, {
+    ok: true,
+    id,
+    // Une publication différée n'a pas encore d'adresse publique : le lien ne vaut
+    // qu'une fois qu'elle est parue.
+    url: id && !quand ? `https://www.facebook.com/${id}` : null,
+    programmeePour: quand ? new Date(quand * 1000).toISOString() : null,
+  });
 }));
