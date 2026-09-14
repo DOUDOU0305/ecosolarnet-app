@@ -282,6 +282,28 @@ exports.handler = withCors(requireSecret(async (event) => {
     return json(200, { version: "routes-fallback", routes });
   }
 
+  // Ce qui est programmé mais pas encore paru. Facebook range ces publications
+  // ailleurs que les publiées : sans cette vue, on ne peut pas vérifier qu'une
+  // programmation a bien pris.
+  if (action === "programmees") {
+    const res = await graphGet(token, "/me/scheduled_posts", {
+      limit: limite,
+      fields: "id,created_time,scheduled_publish_time,message,is_published",
+    });
+    if (!res.ok) {
+      return json(502, { erreur: graphError(res.data, "lecture impossible") });
+    }
+    const publications = (res.data.data || []).map((p) => ({
+      id: p.id,
+      paruePrevue: p.scheduled_publish_time
+        ? new Date(p.scheduled_publish_time * 1000).toISOString()
+        : null,
+      publiee: p.is_published ?? null,
+      debutTexte: p.message ? p.message.slice(0, 120) : null,
+    }));
+    return json(200, { programmees: publications });
+  }
+
   if (action === "facebook") return json(200, { facebook: await lireFacebook(token, limite) });
   if (action === "instagram") return json(200, { instagram: await lireInstagram(token, limite) });
   if (action !== "tout") return json(400, { error: `Action inconnue : ${action}` });
