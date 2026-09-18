@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grille de prix ECOSOLARNET</title>
+<link rel="manifest" href="manifest.json">
+<!-- iOS ne lit ni le favicon ni le manifest pour l'écran d'accueil : c'est ce lien qui décide. -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icone-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Grille">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#2C5F3E">
+<meta name="robots" content="noindex">
+</head>
+<body>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F5F2EC;
+    --surface: #FFFFFF;
+    --sunk: #EFEAE1;
+    --ink: #1C1A17;
+    --ink-soft: #5D574E;
+    --ink-faint: #918A7E;
+    --line: #DED7CA;
+    --green: #2C5F3E;
+    --green-soft: #E4EDE6;
+    --amber: #B06D0B;
+    --amber-soft: #F8EEDC;
+    --red: #97331F;
+    --display: "Fraunces", Georgia, serif;
+    --body: "Inter Tight", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #15140F;
+      --surface: #1F1D18;
+      --sunk: #272420;
+      --ink: #F2EEE6;
+      --ink-soft: #B3AB9D;
+      --ink-faint: #8A8275;
+      --line: #35312A;
+      --green: #7FBF95;
+      --green-soft: #1E2E23;
+      --amber: #E0A85C;
+      --amber-soft: #2E2517;
+      --red: #E08A72;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #15140F;
+    --surface: #1F1D18;
+    --sunk: #272420;
+    --ink: #F2EEE6;
+    --ink-soft: #B3AB9D;
+    --ink-faint: #8A8275;
+    --line: #35312A;
+    --green: #7FBF95;
+    --green-soft: #1E2E23;
+    --amber: #E0A85C;
+    --amber-soft: #2E2517;
+    --red: #E08A72;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding-inline: 18px; padding-block: 32px 60px; }
+
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(30px, 7vw, 40px);
+    font-weight: 700;
+    line-height: 1.05;
+    margin: 0 0 8px;
+    letter-spacing: -.02em;
+  }
+  .sub { margin: 0 0 26px; color: var(--ink-soft); }
+
+  .constat {
+    background: var(--green-soft);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 30px;
+  }
+  .constat b { font-family: var(--display); font-size: 22px; color: var(--green); }
+  .constat p { margin: 4px 0 0; font-size: 15.5px; color: var(--ink-soft); }
+
+  h2 {
+    font-family: var(--display);
+    font-size: 21px;
+    font-weight: 600;
+    margin: 32px 0 12px;
+    letter-spacing: -.01em;
+  }
+
+  .calc {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .tabs button {
+    flex: 1;
+    padding: 11px 6px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--sunk);
+    color: var(--ink-soft);
+    font-family: var(--body);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .tabs button[aria-pressed="true"] {
+    background: var(--green);
+    border-color: var(--green);
+    color: #fff;
+  }
+  .tabs button:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+  .champ { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .champ label { font-size: 14.5px; font-weight: 500; color: var(--ink-soft); }
+  .champ input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin: 0 8px 0 0;
+    accent-color: var(--green);
+    vertical-align: -3px;
+  }
+  .champ input:not([type="checkbox"]), .champ select {
+    font-family: var(--body);
+    font-size: 19px;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--sunk);
+    color: var(--ink);
+    width: 100%;
+  }
+  .champ input:focus-visible, .champ select:focus-visible { outline: 3px solid var(--amber); outline-offset: 1px; }
+  .paire { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .sortie {
+    margin-top: 18px;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+  .ligne {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 15.5px;
+    color: var(--ink-soft);
+  }
+  .ligne span:last-child { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .ligne.total {
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
+    padding-top: 12px;
+    font-size: 17px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .ligne.total span:last-child {
+    font-family: var(--display);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--green);
+  }
+  .alerte {
+    margin-top: 14px;
+    background: var(--amber-soft);
+    border-left: 3px solid var(--amber);
+    border-radius: 8px;
+    padding: 11px 13px;
+    font-size: 14.8px;
+    color: var(--ink-soft);
+  }
+  .alerte[hidden] { display: none !important; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); font-weight: 600; }
+  td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .zone { overflow-x: auto; }
+
+  .regles { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .regle { background: var(--surface); padding: 14px 16px; }
+  .regle b { display: block; margin-bottom: 3px; }
+  .regle span { font-size: 15px; color: var(--ink-soft); }
+
+  .phrase {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--green);
+    border-radius: 10px;
+    padding: 15px 17px;
+    font-size: 16.5px;
+  }
+
+
+  /* Comptage des vitres : chaque type a son dessin, son prix et son compteur. */
+  .vitres { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px 0 0; }
+  .vrow {
+    display: grid;
+    grid-template-columns: 58px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .vrow:last-of-type { border-bottom: 0; }
+  .vrow.actif { background: var(--green-soft); }
+  .vdessin { width: 54px; height: 54px; display: block; }
+  .vdessin rect, .vdessin line, .vdessin path, .vdessin polygon {
+    stroke: var(--ink-soft);
+    stroke-width: 2.4;
+    fill: none;
+    stroke-linecap: round;
+  }
+  .vdessin .verre { fill: var(--sunk); }
+  .vnom { font-size: 15.5px; font-weight: 500; line-height: 1.25; }
+  .vnom em { display: block; font-style: normal; font-size: 13.5px; color: var(--ink-faint); }
+  .vprix {
+    width: 68px;
+    font-family: var(--body);
+    font-size: 15px;
+    padding: 6px 8px;
+    margin-top: 5px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--sunk);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .vcompteur { display: flex; align-items: center; gap: 4px; }
+  .vcompteur button {
+    width: 38px; height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--sunk);
+    color: var(--ink);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .vcompteur button:active { background: var(--green); color: #fff; }
+  .vcompteur button:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+  .vqte {
+    min-width: 34px;
+    text-align: center;
+    font-family: var(--display);
+    font-size: 21px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .vtotal {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 15px 16px;
+    border-top: 2px solid var(--line);
+    background: var(--sunk);
+    border-radius: 0 0 13px 13px;
+  }
+  .vtotal b { font-size: 16px; }
+  .vtotal span { font-family: var(--display); font-size: 30px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+  .vbarre { display: flex; gap: 10px; align-items: center; padding: 12px 16px 14px; flex-wrap: wrap; }
+  .vbarre label { font-size: 14.5px; color: var(--ink-soft); }
+  .vdepl {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px 14px;
+    align-items: center;
+    padding: 13px 16px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .vdepl label { font-size: 15px; font-weight: 500; }
+  .vdepl input[type="number"] {
+    width: 86px;
+    font-family: var(--body);
+    font-size: 16px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--sunk);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .vdepl .detail {
+    grid-column: 1 / -1;
+    font-size: 13.8px;
+    color: var(--ink-faint);
+    line-height: 1.45;
+  }
+  .vdepl .detail b { color: var(--ink-soft); font-weight: 600; }
+  .vbarre button {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-family: var(--body);
+    font-size: 14.5px;
+    cursor: pointer;
+  }
+
+  footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-faint); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <h1>Ta grille de prix</h1>
+  <p class="sub">À garder sur le téléphone. Tape les chiffres pendant que le client parle.</p>
+
+  <div class="constat">
+    <b>56 € la visite, 360 visites par an</b>
+    <p>C'est ton modèle réel : beaucoup de passages courts chez des clients récurrents. Chaque euro ajouté à la visite moyenne vaut 360 € sur l'année.</p>
+  </div>
+
+  <div class="calc">
+    <div class="tabs" role="group" aria-label="Type de chantier">
+      <button type="button" id="t-panneaux" data-svc="panneaux" aria-pressed="true">Panneaux</button>
+      <button type="button" id="t-corniche" data-svc="corniche" aria-pressed="false">Corniche</button>
+      <button type="button" id="t-vitres" data-svc="vitres" aria-pressed="false">Vitres</button>
+    </div>
+
+    <div class="champ" id="bloc-quantite">
+      <label for="quantite" id="label-quantite">Nombre de panneaux</label>
+      <input type="number" id="quantite" min="0" step="1" value="12" inputmode="numeric">
+    </div>
+
+    <div class="paire">
+      <div class="champ">
+        <label for="acces">Accès</label>
+        <select id="acces">
+          <option value="facile">Facile</option>
+          <option value="normal" selected>Normal</option>
+          <option value="difficile">Difficile</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label for="distance">Distance aller (km)</label>
+        <input type="number" id="distance" min="0" step="1" value="10" inputmode="numeric">
+      </div>
+    </div>
+
+    <div class="champ" style="margin-bottom:10px">
+      <label for="depl-actif" style="font-weight:500;display:flex;align-items:center;color:var(--ink)">
+        <input type="checkbox" id="depl-actif">Ajouter le déplacement
+      </label>
+      <p class="muted" id="depl-detail" style="margin:2px 0 0;font-size:13.8px;color:var(--ink-faint);line-height:1.45">
+        Au-delà de 25 km, il vaut mieux le facturer : le forfait matériel ne couvre plus la sortie.
+      </p>
+    </div>
+
+    <div class="champ">
+      <label for="tarifs">Tarifs</label>
+      <select id="tarifs">
+        <option value="janvier">À partir de janvier</option>
+        <option value="actuel">Aujourd'hui</option>
+      </select>
+    </div>
+
+    <div class="sortie">
+      <div class="ligne"><span id="lib-forfait">Forfait matériel</span><span id="out-forfait">—</span></div>
+      <div class="ligne"><span id="lib-main">Main-d'œuvre</span><span id="out-main">—</span></div>
+      <div class="ligne"><span id="lib-depl">Déplacement</span><span id="out-depl">—</span></div>
+      <div class="ligne total"><span>Total</span><span id="out-total">—</span></div>
+      <div class="alerte" id="alerte" hidden></div>
+    </div>
+  </div>
+
+
+  <h2>Devis vitres, au carreau</h2>
+  <p class="sub" style="margin-top:-4px">Compte les carreaux avec le client, il compte avec toi. Les prix sont à toi : modifie-les une fois, ils restent.</p>
+
+  <div class="vitres" id="vitres">
+    <div class="vrow" data-type="carreau">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="12" y="8" width="24" height="32" rx="1.5"/>
+      </svg>
+      <div class="vnom">Carreau simple
+        <em>une seule vitre, à hauteur d'homme</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="2" inputmode="decimal" aria-label="Prix du carreau simple">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer un carreau simple">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter un carreau simple">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="deux">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="8" y="8" width="32" height="32" rx="1.5"/>
+        <line x1="24" y1="8" x2="24" y2="40"/>
+      </svg>
+      <div class="vnom">Fenêtre 2 vantaux
+        <em>deux carreaux côte à côte</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="4" inputmode="decimal" aria-label="Prix de la fenêtre 2 vantaux">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer une fenêtre 2 vantaux">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter une fenêtre 2 vantaux">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="trois">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="12" y="6" width="24" height="36" rx="1.5"/>
+        <line x1="12" y1="18" x2="36" y2="18"/>
+        <line x1="12" y1="30" x2="36" y2="30"/>
+      </svg>
+      <div class="vnom">Fenêtre 3 carreaux
+        <em>avec séparations</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="6" inputmode="decimal" aria-label="Prix de la fenêtre 3 carreaux">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer une fenêtre 3 carreaux">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter une fenêtre 3 carreaux">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="grande">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="4" y="12" width="40" height="24" rx="1.5"/>
+      </svg>
+      <div class="vnom">Grande vitre
+        <em>plus de 2 m², ou un côté de plus d'un mètre</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="8" inputmode="decimal" aria-label="Prix de la grande vitre">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer une grande vitre">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter une grande vitre">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="porte">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="14" y="4" width="20" height="40" rx="1.5"/>
+        <line x1="14" y1="26" x2="34" y2="26"/>
+        <circle cx="30" cy="24" r="1.6" style="fill:var(--ink-soft);stroke:none"/>
+      </svg>
+      <div class="vnom">Porte-fenêtre
+        <em>ou porte vitrée</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="5" inputmode="decimal" aria-label="Prix de la porte-fenêtre">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer une porte-fenêtre">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter une porte-fenêtre">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="velux">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <polygon class="verre" points="8,34 18,12 42,12 34,34"/>
+        <line x1="13" y1="23" x2="38" y2="23"/>
+      </svg>
+      <div class="vnom">Velux
+        <em>vitre de toiture, en pente</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="7" inputmode="decimal" aria-label="Prix du velux">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer un velux">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter un velux">+</button>
+      </div>
+    </div>
+
+    <div class="vrow" data-type="hauteur">
+      <svg class="vdessin" viewBox="0 0 48 48" aria-hidden="true">
+        <rect class="verre" x="18" y="6" width="22" height="20" rx="1.5"/>
+        <line x1="8" y1="44" x2="14" y2="14"/>
+        <line x1="14" y1="44" x2="20" y2="14"/>
+        <line x1="10" y1="36" x2="16" y2="36"/>
+        <line x1="12" y1="27" x2="18" y2="27"/>
+      </svg>
+      <div class="vnom">Vitre en hauteur
+        <em>échelle ou perche nécessaire</em>
+        <input class="vprix" type="number" min="0" step="0.5" value="10" inputmode="decimal" aria-label="Prix de la vitre en hauteur">
+      </div>
+      <div class="vcompteur">
+        <button type="button" data-moins aria-label="Retirer une vitre en hauteur">−</button>
+        <span class="vqte">0</span>
+        <button type="button" data-plus aria-label="Ajouter une vitre en hauteur">+</button>
+      </div>
+    </div>
+
+    <div class="vdepl">
+      <label for="v-depl-actif"><input type="checkbox" id="v-depl-actif"> Ajouter le déplacement</label>
+      <input type="number" id="v-depl-km" min="0" step="1" value="10" inputmode="numeric" aria-label="Distance aller en kilomètres" disabled>
+      <div class="detail" id="v-depl-detail">Distance aller, en kilomètres. L'aller-retour est compté automatiquement.</div>
+    </div>
+
+    <div class="vbarre">
+      <label for="v-interieur"><input type="checkbox" id="v-interieur"> Intérieur aussi (×2)</label>
+      <button type="button" id="v-reset">Tout remettre à zéro</button>
+    </div>
+
+    <div class="vtotal">
+      <b id="v-detail">Aucune vitre comptée</b>
+      <span id="v-total">0 €</span>
+    </div>
+  </div>
+
+  <h2>La grille</h2>
+  <div class="zone">
+    <table>
+      <thead><tr><th>Poste</th><th>Aujourd'hui</th><th>Janvier</th></tr></thead>
+      <tbody>
+        <tr><td>Panneaux — forfait matériel</td><td>35 €</td><td>45 €</td></tr>
+        <tr><td>Panneaux — accès normal</td><td>6 €/panneau</td><td>6 €/panneau</td></tr>
+        <tr><td>Panneaux — accès difficile</td><td>8 €/panneau</td><td>8 €/panneau</td></tr>
+        <tr><td>Corniche — forfait matériel</td><td>25 €</td><td>35 €</td></tr>
+        <tr><td>Corniche — accès normal</td><td>2 €/m</td><td>2 €/m</td></tr>
+        <tr><td>Corniche — accès difficile</td><td>—</td><td>3 €/m</td></tr>
+        <tr><td>Vitres — accès facile</td><td>35 €/h</td><td>35 €/h</td></tr>
+        <tr><td>Vitres — accès normal</td><td>40 €/h</td><td>40 €/h</td></tr>
+        <tr><td>Vitres — accès difficile</td><td>60 €/h</td><td>60 €/h</td></tr>
+        <tr><td>Déplacement au-delà de 25 km</td><td>20 € forfait</td><td>0,40 €/km aller-retour</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Les trois règles</h2>
+  <div class="regles">
+    <div class="regle">
+      <b>La corniche ne se vend jamais seule</b>
+      <span>50 € de main-d'œuvre ne paie pas une sortie. Elle se vend avec les panneaux ou les vitres, le même jour, quand le matériel est déjà dehors.</span>
+    </div>
+    <div class="regle">
+      <b>Au-delà de 25 km, le kilométrage réel</b>
+      <span>Esneux, c'est 60 € de déplacement, pas 20 €. En dessous de 25 km, rien n'apparaît sur le devis : le forfait matériel couvre la sortie.</span>
+    </div>
+    <div class="regle">
+      <b>Chaque client paie son déplacement</b>
+      <span>Même quand tu en enchaînes cinq dans la journée. Ce n'est pas au client de savoir que son voisin est client aussi, et c'est toi qui as organisé la tournée.</span>
+    </div>
+  </div>
+
+  <h2>Quand un client compare avec son voisin</h2>
+  <div class="phrase">
+    Votre voisin a douze panneaux, vous en avez seize. Et chez lui, j'accède au toit depuis la terrasse. Je travaille au même tarif pour tout le monde, c'est le chantier qui change, pas le client.
+  </div>
+
+  <footer>
+    Montants hors TVA. Le taux de 0,40 €/km vient des réglages de ton app — à confirmer avec ton comptable.
+  </footer>
+</div>
+
+<script>
+  var TARIFS = {
+    janvier: { pForfait: 45, cForfait: 35, cDifficile: 3 },
+    actuel:  { pForfait: 35, cForfait: 25, cDifficile: 2 }
+  };
+  // Les vitres se facturent à l'heure, avec trois niveaux d'accès ; les panneaux et la
+  // corniche n'en ont que deux, un accès facile s'y facture comme un accès normal.
+  var TAUX_VITRES = { facile: 35, normal: 40, difficile: 60 };
+  var PRIX_PANNEAU = { facile: 6, normal: 6, difficile: 8 };
+  var PRIX_KM = 0.40;
+  var SEUIL_KM = 25;
+  // Mêmes chiffres que le comptage des vitres, plus bas : le gasoil est la part visible,
+  // le taux complet ajoute l'usure, l'entretien et le remboursement du véhicule.
+  var CONSO_L_100 = 11;
+  var PRIX_LITRE = 2.20;
+  var SEUIL_JOURNEE = 130;
+
+  var service = "panneaux";
+  var els = {
+    quantite: document.getElementById("quantite"),
+    labelQuantite: document.getElementById("label-quantite"),
+    blocQuantite: document.getElementById("bloc-quantite"),
+    acces: document.getElementById("acces"),
+    distance: document.getElementById("distance"),
+    tarifs: document.getElementById("tarifs"),
+    deplActif: document.getElementById("depl-actif"),
+    deplDetail: document.getElementById("depl-detail"),
+    forfait: document.getElementById("out-forfait"),
+    main: document.getElementById("out-main"),
+    depl: document.getElementById("out-depl"),
+    total: document.getElementById("out-total"),
+    libForfait: document.getElementById("lib-forfait"),
+    libMain: document.getElementById("lib-main"),
+    alerte: document.getElementById("alerte")
+  };
+
+  function euro(n) {
+    return n.toLocaleString("fr-BE", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " €";
+  }
+
+  function calculer() {
+    var t = TARIFS[els.tarifs.value];
+    var q = parseFloat(els.quantite.value) || 0;
+    var km = parseFloat(els.distance.value) || 0;
+    var acces = els.acces.value;
+    var difficile = acces === "difficile";
+    var forfait = 0, main = 0, note = "";
+
+    if (service === "panneaux") {
+      forfait = t.pForfait;
+      main = q * PRIX_PANNEAU[acces];
+      els.libForfait.textContent = "Forfait matériel";
+      els.libMain.textContent = q + " panneaux";
+    } else if (service === "corniche") {
+      forfait = t.cForfait;
+      main = q * (difficile ? t.cDifficile : 2);
+      els.libForfait.textContent = "Forfait matériel";
+      els.libMain.textContent = q + " mètres";
+      note = "La corniche ne se vend pas seule. Ajoute-la à un autre chantier le même jour.";
+    } else {
+      forfait = 0;
+      var taux = TAUX_VITRES[acces];
+      main = q * taux;
+      els.libForfait.textContent = "Forfait";
+      els.libMain.textContent = q + " h à " + taux + " €/h";
+    }
+
+    var depl = els.deplActif.checked ? km * 2 * PRIX_KM : 0;
+
+    if (els.deplActif.checked) {
+      var allerRetour = km * 2;
+      var carburant = allerRetour * (CONSO_L_100 / 100) * PRIX_LITRE;
+      els.deplDetail.innerHTML =
+        allerRetour + " km aller-retour — <b style=\"color:var(--ink-soft)\">" +
+        carburant.toFixed(2).replace(".", ",") + " € de gasoil</b> (11 L/100 à 2,20 €/L), " +
+        "<b style=\"color:var(--ink-soft)\">" + depl.toFixed(2).replace(".", ",") +
+        " € tout compris</b> avec l'usure, l'entretien et le véhicule.";
+    } else {
+      els.deplDetail.textContent = km > SEUIL_KM
+        ? "Plus de 25 km : à facturer, le forfait matériel ne couvre plus la sortie."
+        : "Au-delà de 25 km, il vaut mieux le facturer : le forfait matériel ne couvre plus la sortie.";
+    }
+
+    els.forfait.textContent = forfait ? euro(forfait) : "—";
+    els.main.textContent = euro(main);
+    els.depl.textContent = depl ? euro(depl) : "non facturé";
+    els.total.textContent = euro(forfait + main + depl);
+
+    if (!note && main < SEUIL_JOURNEE && service !== "vitres") {
+      note = "Main-d'œuvre sous 130 € : ce chantier seul ne remplit pas une demi-journée. Groupe-le avec un autre dans la commune.";
+    }
+    els.alerte.textContent = note;
+    els.alerte.hidden = !note;
+  }
+
+  document.querySelectorAll(".tabs button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      service = b.getAttribute("data-svc");
+      document.querySelectorAll(".tabs button").forEach(function (o) {
+        o.setAttribute("aria-pressed", String(o === b));
+      });
+      if (service === "panneaux") {
+        els.labelQuantite.textContent = "Nombre de panneaux";
+        els.quantite.value = 12;
+      } else if (service === "corniche") {
+        els.labelQuantite.textContent = "Mètres de corniche";
+        els.quantite.value = 25;
+      } else {
+        els.labelQuantite.textContent = "Heures sur place";
+        els.quantite.value = 2;
+      }
+      calculer();
+    });
+  });
+
+  ["quantite", "acces", "distance", "tarifs", "depl-actif"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", calculer);
+    document.getElementById(id).addEventListener("change", calculer);
+  });
+
+  calculer();
+
+  // Comptage des vitres. Les prix sont ceux de Steve, pas les miens : il les corrige une
+  // fois dans les champs et le navigateur s'en souvient.
+  (function () {
+    var bloc = document.getElementById("vitres");
+    if (!bloc) return;
+    var lignes = bloc.querySelectorAll(".vrow");
+    var sortieTotal = document.getElementById("v-total");
+    var sortieDetail = document.getElementById("v-detail");
+    var interieur = document.getElementById("v-interieur");
+
+    function prixEnregistres() {
+      try { return JSON.parse(localStorage.getItem("ecosolarnet.prixVitres") || "{}"); }
+      catch (e) { return {}; }
+    }
+    function enregistrerPrix() {
+      var p = {};
+      lignes.forEach(function (l) {
+        p[l.getAttribute("data-type")] = l.querySelector(".vprix").value;
+      });
+      try { localStorage.setItem("ecosolarnet.prixVitres", JSON.stringify(p)); } catch (e) {}
+    }
+
+    var memorises = prixEnregistres();
+    lignes.forEach(function (l) {
+      var t = l.getAttribute("data-type");
+      if (memorises[t] != null) l.querySelector(".vprix").value = memorises[t];
+    });
+
+    // Coût du véhicule. Le carburant est la part que Steve voit passer ; le reste
+    // (usure, entretien, pneus, remboursement) est celui qu'on oublie et qui coûte
+    // pourtant autant. Le taux complet est celui réglé dans son app.
+    var CONSO_L_100 = 11;
+    var PRIX_LITRE = 2.20;
+    var TAUX_COMPLET_KM = 0.40;
+
+    var deplActif = document.getElementById("v-depl-actif");
+    var deplKm = document.getElementById("v-depl-km");
+    var deplDetail = document.getElementById("v-depl-detail");
+
+    function coutDeplacement() {
+      if (!deplActif.checked) return 0;
+      var km = parseFloat(deplKm.value) || 0;
+      return km * 2 * TAUX_COMPLET_KM;
+    }
+
+    function majDetailDeplacement() {
+      deplKm.disabled = !deplActif.checked;
+      if (!deplActif.checked) {
+        deplDetail.textContent = "Distance aller, en kilomètres. L'aller-retour est compté automatiquement.";
+        return;
+      }
+      var km = parseFloat(deplKm.value) || 0;
+      var allerRetour = km * 2;
+      var carburant = allerRetour * (CONSO_L_100 / 100) * PRIX_LITRE;
+      var complet = allerRetour * TAUX_COMPLET_KM;
+      deplDetail.innerHTML =
+        allerRetour + " km aller-retour — <b>" + carburant.toFixed(2).replace(".", ",") +
+        " € de gasoil</b> (11 L/100 à 2,20 €/L), <b>" + complet.toFixed(2).replace(".", ",") +
+        " € tout compris</b> avec l'usure, l'entretien et le véhicule.";
+    }
+
+    function recalculer() {
+      var total = 0, nb = 0;
+      lignes.forEach(function (l) {
+        var q = parseInt(l.querySelector(".vqte").textContent, 10) || 0;
+        var prix = parseFloat(l.querySelector(".vprix").value) || 0;
+        total += q * prix;
+        nb += q;
+        l.classList.toggle("actif", q > 0);
+      });
+      if (interieur.checked) total *= 2;
+      var depl = coutDeplacement();
+      total += depl;
+      majDetailDeplacement();
+      sortieTotal.textContent = total.toLocaleString("fr-BE", { maximumFractionDigits: 2 }) + " €";
+      sortieDetail.textContent = nb === 0
+        ? (depl ? "Déplacement seul, aucune vitre comptée" : "Aucune vitre comptée")
+        : nb + (nb > 1 ? " vitres comptées" : " vitre comptée")
+          + (interieur.checked ? ", intérieur compris" : "")
+          + (depl ? ", déplacement compris" : "");
+    }
+
+    lignes.forEach(function (l) {
+      var qte = l.querySelector(".vqte");
+      l.querySelector("[data-plus]").addEventListener("click", function () {
+        qte.textContent = (parseInt(qte.textContent, 10) || 0) + 1;
+        recalculer();
+      });
+      l.querySelector("[data-moins]").addEventListener("click", function () {
+        qte.textContent = Math.max(0, (parseInt(qte.textContent, 10) || 0) - 1);
+        recalculer();
+      });
+      l.querySelector(".vprix").addEventListener("input", function () {
+        enregistrerPrix();
+        recalculer();
+      });
+    });
+
+    interieur.addEventListener("change", recalculer);
+    deplActif.addEventListener("change", recalculer);
+    deplKm.addEventListener("input", recalculer);
+    document.getElementById("v-reset").addEventListener("click", function () {
+      lignes.forEach(function (l) { l.querySelector(".vqte").textContent = "0"; });
+      recalculer();
+    });
+
+    recalculer();
+  })();
+</script>
+
+</body>
+</html>
