@@ -28,9 +28,25 @@ exports.handler = withCors(requireSecret(async function handler(event) {
     .map(([key, t]) => `- "${key}" (${t.label}) : ${t.hint || ""}`)
     .join("\n");
 
+  // Repères de marché belge 2026 (recherche web, pas les tarifs de Steve) —
+  // sert à ce que l'IA VÉRIFIE l'estimation par rapport à la réalité du
+  // marché plutôt que de se fier uniquement aux tarifs déjà configurés par
+  // Steve, qui ne sont qu'une donnée parmi d'autres. Demande explicite de
+  // Steve (2026-09-04) : il comparait à Perplexity, qui avait accès au web
+  // pour évaluer un prix, alors que notre IA ne faisait qu'appliquer ses
+  // propres tarifs sans les recouper avec le marché.
+  const marketRatesText = `Repères du marché belge du nettoyage en 2026 (à utiliser pour VÉRIFIER l'estimation, pas pour la remplacer) :
+- Nettoyage de vitres : tarif horaire moyen 25 à 45 €/h HTVA (Bruxelles structurellement plus cher que le Hainaut), ou 1 à 4 €/m² de vitrage selon l'accessibilité (jusqu'à 7 €/m² pour un lavage complet en profondeur).
+- Nettoyage de panneaux solaires : 100 à 180 € pour une intervention résidentielle complète, ou 5 à 10 €/m².
+Les tarifs actuellement configurés par Steve : vitres Hainaut ${settings.rateHainautMin ?? "?"}-${settings.rateHainautMax ?? "?"} €/h, vitres Bruxelles ${settings.rateBruxellesMin ?? "?"}-${settings.rateBruxellesMax ?? "?"} €/h, panneaux solaires ${settings.solarPanelPrice ?? "?"} €/panneau.`;
+
   const systemPrompt = `Tu es l'assistant qui aide Steve Peters, gérant d'ECOSOLARNET (nettoyage de vitres, vérandas, pergolas, carports, garde-corps, velux et panneaux solaires à Gerpinnes, Belgique), à préparer un devis à partir de photos prises chez un client.
 
-Regarde attentivement chaque photo et détermine quelles prestations parmi celles-ci sont visibles et pertinentes : vitres, véranda, pergola, carport, garde-corps (rambarde/balustrade en verre ou métal), velux (fenêtre de toit), panneaux solaires.
+${marketRatesText}
+
+Regarde attentivement chaque photo et détermine quelles prestations parmi celles-ci sont visibles et pertinentes : vitres, vitrines magasin (façade commerciale, devanture de boutique), véranda, pergola, carport, garde-corps (rambarde/balustrade en verre ou métal), velux (fenêtre de toit), panneaux solaires.
+
+Pour les vitrines magasin, si la prestation est visible, estime un nombre d'heures de travail raisonnable (nombre décimal, ex: 1.5) pour un nettoyage complet intérieur et extérieur, en te basant sur la surface vitrée visible.
 
 Pour les vitres, si tu identifies cette prestation, choisis la catégorie de maison la plus proche parmi :
 ${tiersText}
@@ -44,7 +60,12 @@ Un nettoyage de vitres complet comprend plusieurs étapes distinctes qui prennen
 3. Nettoyage des vitres à proprement parler, intérieur et extérieur : mouiller, passage de la lame (mouilleur), passage du PAD, raclette, essuyage des bords de vitres
 4. Dépoussiérage des appuis de fenêtre
 
-Base ton estimation sur le nombre de fenêtres visibles, leur taille, et la catégorie de maison choisie, en tenant compte de TOUTES ces étapes. Pour référence réelle donnée par Steve : un nettoyage complet a pris 2h30 à deux personnes sur un chantier, soit environ 5 heures (300 minutes) de travail si une seule personne l'avait fait seule — utilise ça comme ordre de grandeur pour une maison de taille standard avec plusieurs fenêtres, et ajuste proportionnellement selon ce que tu vois sur les photos (moins de fenêtres/plus petite maison = moins de temps, plus de fenêtres/plus grande maison = plus de temps). Ne sous-estime pas.
+Base ton estimation sur le nombre de fenêtres visibles, leur taille, et la catégorie de maison choisie, en tenant compte de TOUTES ces étapes. Pour référence réelle donnée par Steve : un nettoyage complet a pris 2h30 à deux personnes sur un chantier de taille standard, soit environ 5 heures (300 minutes) de travail si une seule personne l'avait fait seule. Utilise ces repères par catégorie de maison (ne descends JAMAIS en dessous, même pour la plus petite façade unique) :
+- "petite" (petite maison/appartement, une façade) : minimum 90 minutes (1h30). Même un chantier réduit implique d'installer le matériel, mouiller, passer la lame, le PAD, la raclette et essuyer sur chaque vitre — ce temps incompressible existe même pour peu de fenêtres.
+- "standard" (maison standard, plusieurs fenêtres) : environ 240 à 300 minutes (4h à 5h), la référence de Steve ci-dessus.
+- "grande" (grande maison/villa) : 300 à 420 minutes (5h à 7h) selon le nombre de baies et l'accès.
+- "tresGrande" (cas spécial) : largement plus, à évaluer au cas par cas.
+Ajuste à l'intérieur de ces fourchettes selon ce que tu vois sur les photos (nombre de fenêtres, taille, accès), mais ne descends jamais sous le minimum de la catégorie. Ne sous-estime pas.
 
 Pour les panneaux solaires, si tu peux compter les panneaux visibles sur la ou les photos, indique ce nombre. Si tu ne peux pas compter avec une confiance raisonnable, ne renvoie pas de nombre.
 
@@ -52,10 +73,12 @@ Pour véranda / pergola / carport / garde-corps / velux, si la prestation est vi
 
 Sois prudent : ce ne sont que des estimations à partir de photos, que Steve vérifiera et ajustera lui-même avant d'envoyer le devis. N'invente rien qui n'est pas visible sur les photos.
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exact :
-{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "gardecorps": {"hours": 1}, "velux": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix"}
+Vérification du prix par rapport au marché : à partir de ton estimation de temps/quantité et des tarifs configurés par Steve (donnés ci-dessus), calcule le prix approximatif que ça donnerait, et compare-le aux repères du marché belge donnés plus haut. Dis clairement si ce prix te semble dans la norme du marché, trop bas, ou trop élevé — et si les tarifs configurés par Steve eux-mêmes (pas seulement ce devis) te semblent décalés par rapport au marché actuel, dis-le aussi.
 
-N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport/gardecorps/velux) que si ce service apparaît dans "servicesDetected". "notes" doit toujours être rempli.`;
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, au format exact :
+{"servicesDetected": ["vitres"], "vitres": {"tier": "standard", "formule": "ext", "cleaningTimeMinutes": 90}, "vitrines": {"hours": 1}, "panneaux": {"panelCount": 12}, "veranda": {"hours": 1.5}, "pergola": {"hours": 1}, "carport": {"hours": 1}, "gardecorps": {"hours": 1}, "velux": {"hours": 1}, "notes": "courte explication en français de ce que tu as vu et pourquoi tu proposes ces choix", "marketCheck": "phrase en français comparant le prix estimé de ce devis aux tarifs du marché belge, et si les tarifs configurés par Steve semblent dans la norme"}
+
+N'inclus une clé de service (vitres/vitrines/panneaux/veranda/pergola/carport/gardecorps/velux) que si ce service apparaît dans "servicesDetected". "notes" et "marketCheck" doivent toujours être remplis.`;
 
   const content = [
     { type: "text", text: "Voici la ou les photos prises chez le client :" },
@@ -109,6 +132,7 @@ N'inclus une clé de service (vitres/panneaux/veranda/pergola/carport/gardecorps
         gardecorps: parsed.gardecorps || null,
         velux: parsed.velux || null,
         notes: typeof parsed.notes === "string" ? parsed.notes : "",
+        marketCheck: typeof parsed.marketCheck === "string" ? parsed.marketCheck : "",
       }),
     };
   } catch (err) {

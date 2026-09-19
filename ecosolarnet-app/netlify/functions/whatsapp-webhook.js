@@ -1,6 +1,12 @@
 const crypto = require("crypto");
 const { withCors } = require("./_cors.js");
-const { setDoc } = require("./_firestoreAdmin.js");
+const { setDoc, getDoc } = require("./_firestoreAdmin.js");
+
+// Numéros de Steve (personnel + autre GSM) — un message WhatsApp venant de
+// l'un d'eux ne passe PAS par le tri client (spam/devis/rendezvous...) : il
+// va à l'agent IA personnel de Steve à la place. Format E.164 avec préfixe
+// "whatsapp:" pour matcher exactement le "From" envoyé par Twilio.
+const OWNER_WHATSAPP_NUMBERS = new Set(["whatsapp:+32472336110", "whatsapp:+32496801898"]);
 
 const WORKSPACE_ID = "ecosolarnet";
 const FIREBASE_PROJECT_ID = "ecosolarnet-54647";
@@ -116,6 +122,65 @@ async function sendWhatsAppReply(to, body) {
   }
 }
 
+const OWNER_AGENT_SYSTEM_PROMPT = `Tu es "Marcel", le majordome personnel de Steve Peters, gérant d'ECOSOLARNET (nettoyage de vitres, vérandas, pergolas, carports, garde-corps, velux et panneaux solaires à Gerpinnes, Belgique). Il te parle directement sur WhatsApp, comme un assistant qu'il consulte depuis son téléphone.
+
+Ton style : un majordome dévoué et un peu à l'ancienne (poli, "Monsieur" par-ci par-là, une pointe d'humour so British), mais SANS jamais sacrifier la clarté ni la concision — WhatsApp reste WhatsApp, pas une lettre du XIXe siècle. Va droit au but, juste avec cette touche de personnalité.
+
+Dans cette première version, tu n'as PAS accès aux données de son app (clients, planning, devis, factures) : si sa question en dépend, dis-le clairement plutôt que d'inventer une réponse ou un chiffre.`;
+
+const OWNER_THREAD_MAX_MESSAGES = 20;
+
+async function getOwnerThread(phone) {
+  const doc = await getDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/ownerAssistantThreads/${encodeURIComponent(phone)}`).catch(() => null);
+  return doc?.messages || [];
+}
+
+async function saveOwnerThread(phone, messages) {
+  await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/ownerAssistantThreads/${encodeURIComponent(phone)}`, {
+    phone,
+    messages: messages.slice(-OWNER_THREAD_MAX_MESSAGES),
+    updatedAt: Date.now(),
+  });
+}
+
+// Agent conversationnel personnel de Steve — chemin séparé du tri client
+// (spam/devis/rendezvous...) ci-dessus. Garde un historique court par
+// numéro dans Firestore pour que la conversation ait du contexte d'un
+// message WhatsApp à l'autre.
+async function handleOwnerAgent(from, body) {
+  const history = await getOwnerThread(from);
+  const messages = [...history, { role: "user", content: body }];
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  let replyText = "Désolé, je n'ai pas pu répondre pour le moment — réessaie dans un instant.";
+  if (apiKey) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-sonnet-5",
+          max_tokens: 600,
+          system: OWNER_AGENT_SYSTEM_PROMPT,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const textBlock = (data.content || []).find((b) => b.type === "text");
+        if (textBlock?.text) replyText = textBlock.text;
+      } else {
+        console.error("Owner agent Anthropic error", await res.text());
+      }
+    } catch (err) {
+      console.error("Owner agent call failed", err);
+    }
+  }
+
+  await sendWhatsAppReply(from, replyText).catch((err) => console.error("Owner agent send failed", err));
+  await saveOwnerThread(from, [...messages, { role: "assistant", content: replyText }]).catch((err) => console.error("Owner thread save failed", err));
+}
+
 // Twilio posts application/x-www-form-urlencoded, not JSON, for WhatsApp webhooks.
 exports.handler = withCors(async function handler(event) {
   if (event.httpMethod !== "POST") {
@@ -133,6 +198,11 @@ exports.handler = withCors(async function handler(event) {
   const from = params.get("From") || ""; // "whatsapp:+3247..."
   const body = params.get("Body") || "";
   const profileName = params.get("ProfileName") || "";
+
+  if (OWNER_WHATSAPP_NUMBERS.has(from)) {
+    await handleOwnerAgent(from, body);
+    return { statusCode: 200, headers: { "content-type": "text/xml" }, body: "<Response></Response>" };
+  }
 
   const { category, reply } = await classifyMessage(body);
 
