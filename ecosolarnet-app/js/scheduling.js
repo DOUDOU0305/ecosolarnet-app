@@ -1,5 +1,14 @@
 import { haversineKm, postalCodeRoughDistance } from "./geo.js";
 
+// Deux groupes ne sont fusionnés sur le même jour que s'ils sont à moins de
+// ça l'un de l'autre — remplir une journée à tout prix en collant deux
+// secteurs éloignés (ex. Mettet + Namur, 24 km) fait perdre plus de temps/km
+// que ça n'en fait gagner. Mieux vaut une journée à 2 clients qu'une
+// journée à 4 avec un aller-retour inutile. Demande explicite de Steve
+// (2026-09-20) : "Claire et Servi-Therm sur un seul jour et Annick et
+// Ludvic sur un autre jour" plutôt que les 4 mélangés pour remplir la case.
+const MAX_MERGE_KM = 15;
+
 // Vocabulaire partagé pour la fréquence d'un abonnement (clients.js et
 // devis.js utilisaient chacun leur propre libellé, ce qui les faisait
 // diverger — ex. "Tous les 3 mois" ici, "Trimestriel" là).
@@ -128,6 +137,7 @@ export function clusterByProximity(items, maxPerDay, base) {
       for (let j = i + 1; j < active.length; j++) {
         if (active[i].length + active[j].length > maxPerDay) continue;
         const d = groupDistance(active[i], active[j], base);
+        if (d > MAX_MERGE_KM) continue;
         if (d < bestDist) {
           bestDist = d;
           bestI = i;
