@@ -98,9 +98,19 @@ export function clusterByProximity(items, maxPerDay, base) {
     for (const group of localityGroups) {
       const remaining = [...group.items];
       while (remaining.length > 0) {
-        if (cluster.length >= maxPerDay) {
+        const room = maxPerDay - cluster.length;
+        // Si la place restante dans le paquet en cours ne suffit pas pour
+        // TOUT le reste du groupe, mieux vaut laisser cette place inoccupée
+        // et ouvrir un nouveau paquet plutôt que de couper le groupe en
+        // deux — c'est exactement ce qui séparait deux clients de la même
+        // ville sur des jours différents (Annick/Ludvic à Namur, signalé
+        // par Steve le 2026-09-20). Un groupe plus grand qu'une journée
+        // entière doit quand même être étalé — dans ce cas seulement, on
+        // découpe par paquets pleins.
+        if (cluster.length > 0 && remaining.length > room) {
           clusters.push(cluster);
           cluster = [];
+          continue;
         }
         const take = remaining.splice(0, maxPerDay - cluster.length);
         cluster.push(...take);
