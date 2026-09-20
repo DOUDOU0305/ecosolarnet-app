@@ -22,18 +22,55 @@ function distanceBetween(from, item, base) {
   return postalCodeRoughDistance(from?.postalCode || "0", item.postalCode);
 }
 
-// Regroupe des items (avec lat/lng et/ou postalCode) en paquets d'au plus
-// maxPerDay éléments, un paquet = un jour de tournée.
-//
-// Demande explicite de Steve (2026-09-20) : grouper D'ABORD par code postal
-// exact — tous les clients de Namur ensemble, tous ceux de Mettet ensemble —
-// plutôt que par une distance calculée qui pouvait sembler donner des
-// résultats imprévisibles. Les groupes de code postal sont ensuite ordonnés
-// par proximité à la base (départ), et remplissent les paquets dans cet
-// ordre : un groupe reste entièrement contigu dans un même paquet sauf s'il
-// dépasse maxPerDay à lui seul (auquel cas il continue sur le paquet
-// suivant), et le reste de place d'un paquet est comblé par le groupe de
-// code postal suivant le plus proche plutôt que laissé vide.
+// Une ville comme Namur s'étale sur plusieurs codes postaux (5000, 5001,
+// 5004...) — grouper par code postal EXACT (tentative précédente,
+// 2026-09-20) les traitait à tort comme des secteurs différents, ce qui
+// pouvait les faire séparer par un groupe d'une autre ville intercalé entre
+// deux. On groupe donc par nom de ville (normalisé), qui correspond
+// directement à ce que Steve demande ("tous les clients de Namur
+// ensemble") ; repli sur le code postal si la ville est absente.
+function localityKey(item) {
+  const city = (item.city || "").trim().toLowerCase();
+  return city || `cp-${item.postalCode || ""}`;
+}
+
+// Ordonne un paquet de clients en un trajet cohérent (plus proche voisin en
+// partant de la base) pour que l'ORDRE DE VISITE affiché ne fasse jamais
+// d'aller-retour, même quand deux villes différentes partagent la même
+// journée (signalé par Steve : "on passe de Namur à Sambreville, on revient
+// sur Namur, puis Mettet, puis Gerpinnes" — le regroupement par ville seul
+// ne suffit pas si l'ordre à l'intérieur du paquet n'est pas aussi trié).
+function orderAsRoute(cluster, base) {
+  const remaining = [...cluster];
+  const route = [];
+  let current = base;
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = distanceBetween(current, remaining[i], base);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    const [next] = remaining.splice(bestIdx, 1);
+    route.push(next);
+    current = next.lat != null ? { lat: next.lat, lng: next.lng } : current;
+  }
+  return route;
+}
+
+// Regroupe des items (avec lat/lng et/ou postalCode/city) en paquets d'au
+// plus maxPerDay éléments, un paquet = un jour de tournée. Groupe D'ABORD
+// par ville (voir localityKey) — tous les clients de Namur ensemble, tous
+// ceux de Mettet ensemble — demande explicite de Steve (2026-09-20). Les
+// groupes de ville sont ensuite ordonnés par proximité à la base (départ),
+// et remplissent les paquets dans cet ordre : un groupe reste entièrement
+// contigu dans un même paquet sauf s'il dépasse maxPerDay à lui seul, et le
+// reste de place d'un paquet est comblé par le groupe de ville suivant le
+// plus proche plutôt que laissé vide. Chaque paquet est ensuite réordonné
+// en trajet cohérent (orderAsRoute) avant d'être renvoyé.
 export function clusterByProximity(items, maxPerDay, base) {
   const byRegion = new Map();
   for (const item of items) {
@@ -44,13 +81,13 @@ export function clusterByProximity(items, maxPerDay, base) {
 
   const clusters = [];
   for (const [, regionItems] of byRegion) {
-    const byPostal = new Map();
+    const byLocality = new Map();
     for (const item of regionItems) {
-      const code = item.postalCode || "";
-      if (!byPostal.has(code)) byPostal.set(code, []);
-      byPostal.get(code).push(item);
+      const key = localityKey(item);
+      if (!byLocality.has(key)) byLocality.set(key, []);
+      byLocality.get(key).push(item);
     }
-    const postalGroups = [...byPostal.values()]
+    const localityGroups = [...byLocality.values()]
       .map((groupItems) => ({
         items: groupItems,
         dist: Math.min(...groupItems.map((it) => distanceBetween(base, it, base))),
@@ -58,7 +95,7 @@ export function clusterByProximity(items, maxPerDay, base) {
       .sort((a, b) => a.dist - b.dist);
 
     let cluster = [];
-    for (const group of postalGroups) {
+    for (const group of localityGroups) {
       const remaining = [...group.items];
       while (remaining.length > 0) {
         if (cluster.length >= maxPerDay) {
@@ -71,7 +108,7 @@ export function clusterByProximity(items, maxPerDay, base) {
     }
     if (cluster.length > 0) clusters.push(cluster);
   }
-  return clusters;
+  return clusters.map((cluster) => orderAsRoute(cluster, base));
 }
 
 export function clusterKm(cluster, base) {
