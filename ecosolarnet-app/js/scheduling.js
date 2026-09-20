@@ -1,4 +1,4 @@
-import { haversineKm, postalCodeRoughDistance, classifyRegion } from "./geo.js";
+import { haversineKm, postalCodeRoughDistance } from "./geo.js";
 
 // Vocabulaire partagé pour la fréquence d'un abonnement (clients.js et
 // devis.js utilisaient chacun leur propre libellé, ce qui les faisait
@@ -61,62 +61,98 @@ function orderAsRoute(cluster, base) {
   return route;
 }
 
+// Distance minimale entre deux groupes (le couple de membres le plus proche
+// entre l'un et l'autre) — sert à décider quelle paire de groupes fusionner.
+function groupDistance(groupA, groupB, base) {
+  let d = Infinity;
+  for (const a of groupA) {
+    for (const b of groupB) {
+      const dd = distanceBetween(a, b, base);
+      if (dd < d) d = dd;
+    }
+  }
+  return d;
+}
+
 // Regroupe des items (avec lat/lng et/ou postalCode/city) en paquets d'au
 // plus maxPerDay éléments, un paquet = un jour de tournée. Groupe D'ABORD
 // par ville (voir localityKey) — tous les clients de Namur ensemble, tous
-// ceux de Mettet ensemble — demande explicite de Steve (2026-09-20). Les
-// groupes de ville sont ensuite ordonnés par proximité à la base (départ),
-// et remplissent les paquets dans cet ordre : un groupe reste entièrement
-// contigu dans un même paquet sauf s'il dépasse maxPerDay à lui seul, et le
-// reste de place d'un paquet est comblé par le groupe de ville suivant le
-// plus proche plutôt que laissé vide. Chaque paquet est ensuite réordonné
-// en trajet cohérent (orderAsRoute) avant d'être renvoyé.
+// ceux de Mettet ensemble — demande explicite de Steve (2026-09-20) : un
+// groupe de ville n'est JAMAIS coupé en deux jours, sauf s'il dépasse
+// maxPerDay à lui seul (impossible de faire autrement dans ce cas).
+//
+// Les groupes de ville sont ensuite assemblés en paquets par fusion
+// agglomérative : à chaque étape, on fusionne la PAIRE de groupes encore
+// séparés la plus proche l'une de l'autre (peu importe l'ordre où ils ont
+// été découverts), tant que la fusion tient dans maxPerDay. Une première
+// version traitait les groupes dans un ordre fixe (proximité à la base) et
+// laissait chaque paquet "réclamer" le premier groupe compatible trouvé —
+// ce qui pouvait attribuer un groupe à un paquet simplement parce que son
+// tour venait avant, même si un autre paquet pas encore formé aurait été
+// objectivement plus proche. Vérifié avec les vraies coordonnées le
+// 2026-09-20 : Harmony-Jean (Sambreville) est à 6 km de Julie/Yume
+// (Farciennes) mais à 13 km de Claire/Servi-therm (Mettet) — la fusion par
+// paire la plus proche globalement les regroupe correctement, l'ancienne
+// version non. Chaque paquet est ensuite réordonné en trajet cohérent
+// (orderAsRoute) avant d'être renvoyé.
 export function clusterByProximity(items, maxPerDay, base) {
-  const byRegion = new Map();
+  // Pas de pré-découpage par "région" (Hainaut/Bruxelles/Autre) : ce
+  // classement sert au calcul du TARIF horaire (devis.js), pas à la
+  // proximité réelle. Un ancien passage de cette fonction s'en servait
+  // encore ici et empêchait à tort deux secteurs voisins mais dans des
+  // tranches de code postal différentes de se rassembler — ex. Farciennes
+  // (6240, classé "Hainaut") ne pouvait jamais rejoindre Sambreville (5060,
+  // classé "Autre") alors qu'ils sont à 6 km l'un de l'autre. Signalé par
+  // Steve le 2026-09-20 après vérification directe sur coordonnées réelles.
+  const byLocality = new Map();
   for (const item of items) {
-    const region = classifyRegion(item.postalCode);
-    if (!byRegion.has(region)) byRegion.set(region, []);
-    byRegion.get(region).push(item);
+    const key = localityKey(item);
+    if (!byLocality.has(key)) byLocality.set(key, []);
+    byLocality.get(key).push(item);
   }
-
+  const active = [...byLocality.values()].map((groupItems) => [...groupItems]);
   const clusters = [];
-  for (const [, regionItems] of byRegion) {
-    const byLocality = new Map();
-    for (const item of regionItems) {
-      const key = localityKey(item);
-      if (!byLocality.has(key)) byLocality.set(key, []);
-      byLocality.get(key).push(item);
-    }
-    const localityGroups = [...byLocality.values()]
-      .map((groupItems) => ({
-        items: groupItems,
-        dist: Math.min(...groupItems.map((it) => distanceBetween(base, it, base))),
-      }))
-      .sort((a, b) => a.dist - b.dist);
 
-    let cluster = [];
-    for (const group of localityGroups) {
-      const remaining = [...group.items];
-      while (remaining.length > 0) {
-        const room = maxPerDay - cluster.length;
-        // Si la place restante dans le paquet en cours ne suffit pas pour
-        // TOUT le reste du groupe, mieux vaut laisser cette place inoccupée
-        // et ouvrir un nouveau paquet plutôt que de couper le groupe en
-        // deux — c'est exactement ce qui séparait deux clients de la même
-        // ville sur des jours différents (Annick/Ludvic à Namur, signalé
-        // par Steve le 2026-09-20). Un groupe plus grand qu'une journée
-        // entière doit quand même être étalé — dans ce cas seulement, on
-        // découpe par paquets pleins.
-        if (cluster.length > 0 && remaining.length > room) {
-          clusters.push(cluster);
-          cluster = [];
-          continue;
+  while (active.length > 0) {
+    if (active.length === 1) {
+      const [only] = active.splice(0, 1);
+      const remaining = [...only];
+      while (remaining.length > 0) clusters.push(remaining.splice(0, maxPerDay));
+      break;
+    }
+
+    let bestI = -1;
+    let bestJ = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < active.length; i++) {
+      for (let j = i + 1; j < active.length; j++) {
+        if (active[i].length + active[j].length > maxPerDay) continue;
+        const d = groupDistance(active[i], active[j], base);
+        if (d < bestDist) {
+          bestDist = d;
+          bestI = i;
+          bestJ = j;
         }
-        const take = remaining.splice(0, maxPerDay - cluster.length);
-        cluster.push(...take);
       }
     }
-    if (cluster.length > 0) clusters.push(cluster);
+
+    if (bestI === -1) {
+      // Aucune paire ne peut plus fusionner (tout ce qui reste est trop
+      // grand ou dépasserait maxPerDay) : chaque groupe restant devient
+      // son ou ses propres paquets.
+      for (const g of active) {
+        const remaining = [...g];
+        while (remaining.length > 0) clusters.push(remaining.splice(0, maxPerDay));
+      }
+      break;
+    }
+
+    active[bestI] = active[bestI].concat(active[bestJ]);
+    active.splice(bestJ, 1);
+    if (active[bestI].length >= maxPerDay) {
+      clusters.push(active[bestI]);
+      active.splice(bestI, 1);
+    }
   }
   return clusters.map((cluster) => orderAsRoute(cluster, base));
 }
