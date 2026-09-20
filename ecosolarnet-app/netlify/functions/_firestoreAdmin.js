@@ -60,9 +60,24 @@ function toFirestoreFields(obj) {
   return fields;
 }
 
+// BUG CRITIQUE trouvé et corrigé le 2026-09-20 : un PATCH Firestore SANS
+// `updateMask.fieldPaths` ne fusionne PAS les champs donnés avec le
+// document existant — il REMPLACE le document entier par uniquement les
+// champs fournis, effaçant silencieusement tout le reste (nom, adresse,
+// téléphone, notes...). Chaque appelant de setDoc dans ce projet suppose un
+// vrai merge (voir leurs commentaires "merge:true" un peu partout) ; sans
+// le paramètre updateMask ci-dessous, ce n'était vrai QUE quand `data`
+// contenait déjà tous les champs du document (le cas normal, d'où le bug
+// resté invisible longtemps) — mais dès qu'on écrit volontairement un
+// sous-ensemble de champs (ex. juste lat/lng pour corriger une adresse mal
+// géocodée), ça efface tout le reste. A détruit les fiches de plusieurs
+// clients (Debaeker, Christophe BIALIK, Wendy PIERSON) avant d'être repéré
+// et réparé à la main.
 async function setDoc(projectId, path, data) {
   const token = await getAccessToken();
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}`;
+  const fieldPaths = Object.keys(data);
+  const mask = fieldPaths.map((f) => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join("&");
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${path}${mask ? `?${mask}` : ""}`;
   const res = await fetch(url, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
