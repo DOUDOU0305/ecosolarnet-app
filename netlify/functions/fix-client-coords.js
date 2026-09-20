@@ -19,12 +19,15 @@ exports.handler = withCors(requireSecret(async function handler(event) {
   } catch {
     return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
-  const { clientId, lat, lng } = payload;
+  const { clientId, lat, lng, collection } = payload;
   if (!clientId || typeof lat !== "number" || typeof lng !== "number") {
     return { statusCode: 400, body: JSON.stringify({ error: "clientId, lat, lng (nombres) requis" }) };
   }
   try {
-    await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/clients/${clientId}`, {
+    // collection optionnelle : "clients" par défaut, mais une entrée de
+    // liste d'attente (waitlist) porte ses propres lat/lng utilisés
+    // directement par le regroupement de tournées avant validation.
+    await setDoc(FIREBASE_PROJECT_ID, `artisans/${WORKSPACE_ID}/${collection || "clients"}/${clientId}`, {
       lat,
       lng,
       _syncedAt: Date.now(),
