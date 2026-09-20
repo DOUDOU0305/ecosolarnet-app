@@ -34,6 +34,23 @@ function serviceLabelsLine(e) {
   return entryServiceTypes(e).map((t) => SERVICE_LABELS[t] || t).join(", ") || "—";
 }
 
+// Mois actuellement affiché dans la liste ("null" = mois par défaut, le mois
+// prochain). Variable de module plutôt que dans l'URL : le routeur de l'app
+// ne gère qu'un seul segment d'id après la route (#/waitlist/xxx), pas de
+// paramètres de requête — ça reste donc en mémoire le temps de la session,
+// et revient à null (mois par défaut) une fois un client "encodé" dans un
+// mois choisi, comme demandé par Steve.
+let selectedListMonth = null;
+
+function currentMonthStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function defaultListMonth() {
+  return nextMonthStr(currentMonthStr());
+}
+
 export async function render(container, params) {
   if (params && params.id) return renderForm(container, params.id === "new" ? null : params.id);
   return renderList(container);
@@ -42,40 +59,51 @@ export async function render(container, params) {
 async function renderList(container) {
   const settings = await getSettings();
   const entries = await Store.getAll("waitlist");
-  entries.sort((a, b) => a.targetMonth.localeCompare(b.targetMonth) || a.name.localeCompare(b.name));
-  const months = [...new Set(entries.map((e) => e.targetMonth))].sort();
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  const month = selectedListMonth || defaultListMonth();
+  const monthEntries = entries.filter((e) => e.targetMonth === month);
 
   container.innerHTML = `
     <h1>Liste d'attente</h1>
-    ${months.length === 0 ? `
-      <div class="empty-state">
-        <div class="big">⏳</div>
-        <p>Aucun client en attente.<br>Ajoutez-en un avec le bouton +.</p>
+    <div class="card">
+      <label>Choisir un mois</label>
+      <div class="grid-2">
+        <input type="month" id="wl-month-picker" min="${currentMonthStr()}" max="2027-09" value="${month}">
+        <button type="button" class="btn secondary" id="wl-month-go-btn">Voir ce mois</button>
       </div>
-    ` : months.map((m) => `
-      <div class="card" data-month="${m}">
-        <div class="section-title-row">
-          <h3 style="margin-top:0;text-transform:capitalize">${monthLabel(m)}</h3>
-          <span class="pill">${entries.filter((e) => e.targetMonth === m).length} client(s)</span>
-        </div>
-        ${entries.filter((e) => e.targetMonth === m).map((e) => `
-          <div class="list-item">
-            <div>
-              <strong>${escapeHtml(e.name)}</strong>
-              <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
-            </div>
-            <div style="display:flex;gap:6px;flex:none">
-              <button type="button" class="btn small" data-edit="${e.id}">Modifier</button>
-              <button type="button" class="btn danger small" data-remove="${e.id}">Retirer</button>
-            </div>
+    </div>
+
+    <div class="card" data-month="${month}">
+      <div class="section-title-row">
+        <h3 style="margin-top:0;text-transform:capitalize">${monthLabel(month)}</h3>
+        <span class="pill">${monthEntries.length} client(s)</span>
+      </div>
+      ${monthEntries.length === 0 ? `
+        <p class="muted" style="margin:0">Aucun client en attente pour ce mois.<br>Ajoutez-en un avec le bouton +.</p>
+      ` : monthEntries.map((e) => `
+        <div class="list-item">
+          <div>
+            <strong>${escapeHtml(e.name)}</strong>
+            <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
           </div>
-        `).join("")}
-        <button type="button" class="btn block" data-generate="${m}" style="margin-top:10px">Générer le planning pour ce mois</button>
-      </div>
-    `).join("")}
+          <div style="display:flex;gap:6px;flex:none">
+            <button type="button" class="btn small" data-edit="${e.id}">Modifier</button>
+            <button type="button" class="btn danger small" data-remove="${e.id}">Retirer</button>
+          </div>
+        </div>
+      `).join("")}
+      ${monthEntries.length > 0 ? `<button type="button" class="btn block" data-generate="${month}" style="margin-top:10px">Générer le planning pour ce mois</button>` : ""}
+    </div>
     <div id="proposal-zone"></div>
     <button class="fab" id="add-waitlist-btn">+</button>
   `;
+
+  container.querySelector("#wl-month-go-btn").addEventListener("click", () => {
+    const picked = container.querySelector("#wl-month-picker").value;
+    if (!picked) return;
+    selectedListMonth = picked;
+    renderList(container);
+  });
 
   container.querySelector("#add-waitlist-btn").addEventListener("click", () => {
     location.hash = "#/waitlist/new";
@@ -98,8 +126,6 @@ async function renderList(container) {
 
   container.querySelectorAll("[data-generate]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const month = btn.dataset.generate;
-      const monthEntries = entries.filter((e) => e.targetMonth === month);
       btn.disabled = true;
       const originalLabel = btn.textContent;
       btn.textContent = "Calcul en cours…";
@@ -155,6 +181,36 @@ async function handleGenerate(container, month, entries, settings) {
   renderProposal(container, month, entries, proposedDates);
 }
 
+function formatDateFr(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function buildProposalMessage(dateStr, heure) {
+  const dateFr = formatDateFr(dateStr);
+  if (!dateFr) return "";
+  const heurePart = heure ? ` à ${heure}` : "";
+  return `Bonjour, je reviens vers vous pour vous proposer le ${dateFr}${heurePart}. Est-ce que cela vous intéresse ?`;
+}
+
+function buildPostponeMessage(dateStr, heure) {
+  const dateFr = formatDateFr(dateStr);
+  if (!dateFr) return "";
+  const heurePart = heure ? ` à ${heure}` : "";
+  return `Bonjour, notre rendez-vous était prévu le [date et heure initiales], je reviens vers vous car je suis de permanence à Bruxelles. Je peux vous proposer le ${dateFr}${heurePart}.`;
+}
+
+async function copyMessageToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Message copié");
+  } catch (err) {
+    console.error(err);
+    showToast("Impossible de copier le message");
+  }
+}
+
 function renderProposal(container, month, entries, proposedDates) {
   const zone = container.querySelector("#proposal-zone");
   const sorted = [...entries].sort((a, b) => {
@@ -172,13 +228,18 @@ function renderProposal(container, month, entries, proposedDates) {
       ${unplacedCount > 0 ? `<p class="muted">⚠️ ${unplacedCount} client(s) ne rentrent pas dans les jours libres de ce mois — reportés automatiquement si vous ne leur donnez pas de date.</p>` : ""}
       <p class="muted" style="font-size:12px">Décochez un client pour le laisser de côté cette fois (il reste en liste d'attente, inchangé).</p>
       ${sorted.map((e) => `
-        <div class="list-item">
+        <div class="list-item" style="flex-wrap:wrap;align-items:center">
           <input type="checkbox" class="proposal-include" data-entry="${e.id}" checked style="width:20px;height:20px;flex:none;margin-right:4px;accent-color:var(--teal)">
-          <div style="flex:1">
+          <div style="flex:1;min-width:140px">
             <strong>${escapeHtml(e.name)}</strong>
             <div class="muted">${escapeHtml(e.postalCode)} ${escapeHtml(e.city || "")} · ${serviceLabelsLine(e)}</div>
           </div>
           <input type="date" class="proposal-date" data-entry="${e.id}" value="${proposedDates[e.id] || ""}" min="${todayStr}" style="width:150px;margin:0">
+          <input type="time" class="proposal-time" data-entry="${e.id}" style="width:100px;margin:0" title="Heure du rendez-vous (facultatif)">
+          <div style="display:flex;gap:6px;width:100%;margin-top:6px">
+            <button type="button" class="btn small secondary copy-msg-proposal" data-entry="${e.id}" style="flex:1">📋 Message proposition</button>
+            <button type="button" class="btn small secondary copy-msg-postpone" data-entry="${e.id}" style="flex:1">📋 Message report (permanence)</button>
+          </div>
         </div>
       `).join("")}
       <button class="btn block" id="validate-proposal-btn" style="margin-top:14px">Valider ce planning</button>
@@ -188,6 +249,28 @@ function renderProposal(container, month, entries, proposedDates) {
 
   zone.querySelector("#cancel-proposal-btn").addEventListener("click", () => {
     zone.innerHTML = "";
+  });
+
+  zone.querySelectorAll(".copy-msg-proposal").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.entry;
+      const dateVal = zone.querySelector(`.proposal-date[data-entry="${id}"]`).value;
+      const heureVal = zone.querySelector(`.proposal-time[data-entry="${id}"]`).value;
+      const text = buildProposalMessage(dateVal, heureVal);
+      if (!text) { showToast("Choisissez d'abord une date pour ce client"); return; }
+      copyMessageToClipboard(text);
+    });
+  });
+
+  zone.querySelectorAll(".copy-msg-postpone").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.entry;
+      const dateVal = zone.querySelector(`.proposal-date[data-entry="${id}"]`).value;
+      const heureVal = zone.querySelector(`.proposal-time[data-entry="${id}"]`).value;
+      const text = buildPostponeMessage(dateVal, heureVal);
+      if (!text) { showToast("Choisissez d'abord une date pour ce client"); return; }
+      copyMessageToClipboard(text);
+    });
   });
 
   zone.querySelector("#validate-proposal-btn").addEventListener("click", async () => {
@@ -281,15 +364,17 @@ async function validateProposal(container, month, entries, zone) {
       `${skippedCount ? `, ${skippedCount} laissé(s) de côté` : ""}`
   );
   zone.innerHTML = "";
+  selectedListMonth = null;
   await renderList(container);
 }
 
 async function renderForm(container, editId = null) {
   const clients = await Store.getAll("clients");
   clients.sort((a, b) => a.name.localeCompare(b.name));
-  const now = new Date();
-  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const defaultMonth = nextMonthStr(currentMonthStr);
+  // Une nouvelle entrée reprend le mois actuellement affiché dans la liste
+  // (celui choisi via le sélecteur) plutôt que toujours "le mois prochain" —
+  // c'est justement le but de pouvoir choisir un mois avant d'ajouter.
+  const defaultMonth = selectedListMonth || defaultListMonth();
   const existing = editId ? await Store.get("waitlist", editId) : null;
 
   container.innerHTML = `
@@ -334,7 +419,7 @@ async function renderForm(container, editId = null) {
       </div>
       <div class="field">
         <label>Mois souhaité *</label>
-        <input type="month" name="targetMonth" required value="${existing?.targetMonth || defaultMonth}">
+        <input type="month" name="targetMonth" required min="${currentMonthStr()}" max="2027-09" value="${existing?.targetMonth || defaultMonth}">
       </div>
       <div class="field">
         <label>Notes</label>
@@ -410,6 +495,9 @@ async function renderForm(container, editId = null) {
         .catch(() => {});
     }
 
+    // Une fois le client encodé, retour à la vue par défaut (mois prochain)
+    // plutôt que de rester sur le mois qu'on venait de choisir.
+    selectedListMonth = null;
     location.hash = "#/waitlist";
   });
 }
