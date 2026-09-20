@@ -1,0 +1,20 @@
+# Ce fichier n'existe que pour donner son horaire à la fonction
+# publier-programme : Netlify ne sait lire un calendrier de tâches que d'ici,
+# pas depuis l'interface web.
+#
+# Les deux chemins ci-dessous ne font que recopier ce qui était déjà réglé dans
+# l'interface Netlify. Ils sont écrits noir sur blanc parce qu'un netlify.toml
+# qui déclare une section [functions] sans dire où sont les fonctions peut les
+# faire chercher au mauvais endroit — et toutes les fonctions du site
+# tomberaient d'un coup. Ne pas les modifier sans vérifier l'interface.
+
+[build]
+  publish = "ecosolarnet-app"
+
+[functions]
+  directory = "ecosolarnet-app/netlify/functions"
+
+# Toutes les deux minutes. Une publication part donc au pire deux à quatre
+# minutes après l'heure prévue, le temps qu'Instagram prépare le média.
+[functions."publier-programme"]
+  schedule = "*/2 * * * *"
