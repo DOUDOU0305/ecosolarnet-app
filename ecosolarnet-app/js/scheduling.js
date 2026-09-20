@@ -29,6 +29,14 @@ function distanceBetween(from, item, base) {
 // d'abord par région (Hainaut/Bruxelles/Autre) puis on limite les sauts de
 // distance au sein d'un même paquet, pour éviter de mélanger des secteurs
 // éloignés simplement parce qu'il reste de la place ce jour-là.
+//
+// Chaque nouveau client ajouté à un paquet est choisi par sa distance au
+// membre le PLUS PROCHE déjà dans le paquet (pas seulement au dernier
+// ajouté) : deux clients réellement voisins finissent donc toujours
+// ensemble, même si un autre client se trouvait sur le chemin "idéal" entre
+// les deux — sinon ce dernier pouvait les "doubler" et les séparer sur des
+// jours différents (signalé par Steve le 2026-09-20 : deux clients à 5 min
+// l'un de l'autre placés à 3 jours d'écart).
 export function clusterByProximity(items, maxPerDay, base) {
   const byRegion = new Map();
   for (const item of items) {
@@ -40,28 +48,38 @@ export function clusterByProximity(items, maxPerDay, base) {
   const clusters = [];
   for (const [, regionItems] of byRegion) {
     const remaining = [...regionItems];
-    let current = base;
-    let cluster = [];
     while (remaining.length > 0) {
-      let bestIdx = 0;
-      let bestDist = Infinity;
+      // Amorce le paquet avec le client le plus proche de la base (point de
+      // départ le plus logique pour une tournée).
+      let seedIdx = 0;
+      let seedDist = Infinity;
       for (let i = 0; i < remaining.length; i++) {
-        const d = distanceBetween(current, remaining[i], base);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIdx = i;
+        const d = distanceBetween(base, remaining[i], base);
+        if (d < seedDist) {
+          seedDist = d;
+          seedIdx = i;
         }
       }
-      const [next] = remaining.splice(bestIdx, 1);
-      if (cluster.length > 0 && (cluster.length >= maxPerDay || bestDist > MAX_JUMP_KM)) {
-        clusters.push(cluster);
-        cluster = [];
-        current = base;
+      const cluster = remaining.splice(seedIdx, 1);
+
+      while (cluster.length < maxPerDay && remaining.length > 0) {
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < remaining.length; i++) {
+          for (const member of cluster) {
+            const d = distanceBetween(member, remaining[i], base);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = i;
+            }
+          }
+        }
+        if (bestIdx === -1 || bestDist > MAX_JUMP_KM) break;
+        const [next] = remaining.splice(bestIdx, 1);
+        cluster.push(next);
       }
-      cluster.push(next);
-      current = next.lat != null ? { lat: next.lat, lng: next.lng } : current;
+      clusters.push(cluster);
     }
-    if (cluster.length > 0) clusters.push(cluster);
   }
   return clusters;
 }
