@@ -1,7 +1,5 @@
 import { haversineKm, postalCodeRoughDistance, classifyRegion } from "./geo.js";
 
-const MAX_JUMP_KM = 20; // au-delà, on ne regroupe plus sur la même journée même s'il reste de la place
-
 // Vocabulaire partagé pour la fréquence d'un abonnement (clients.js et
 // devis.js utilisaient chacun leur propre libellé, ce qui les faisait
 // diverger — ex. "Tous les 3 mois" ici, "Trimestriel" là).
@@ -24,19 +22,18 @@ function distanceBetween(from, item, base) {
   return postalCodeRoughDistance(from?.postalCode || "0", item.postalCode);
 }
 
-// Regroupe des items (avec lat/lng et/ou postalCode) en paquets ordonnés par
-// proximité, chaque paquet contenant au maximum maxPerDay éléments. On sépare
-// d'abord par région (Hainaut/Bruxelles/Autre) puis on limite les sauts de
-// distance au sein d'un même paquet, pour éviter de mélanger des secteurs
-// éloignés simplement parce qu'il reste de la place ce jour-là.
+// Regroupe des items (avec lat/lng et/ou postalCode) en paquets d'au plus
+// maxPerDay éléments, un paquet = un jour de tournée.
 //
-// Chaque nouveau client ajouté à un paquet est choisi par sa distance au
-// membre le PLUS PROCHE déjà dans le paquet (pas seulement au dernier
-// ajouté) : deux clients réellement voisins finissent donc toujours
-// ensemble, même si un autre client se trouvait sur le chemin "idéal" entre
-// les deux — sinon ce dernier pouvait les "doubler" et les séparer sur des
-// jours différents (signalé par Steve le 2026-09-20 : deux clients à 5 min
-// l'un de l'autre placés à 3 jours d'écart).
+// Demande explicite de Steve (2026-09-20) : grouper D'ABORD par code postal
+// exact — tous les clients de Namur ensemble, tous ceux de Mettet ensemble —
+// plutôt que par une distance calculée qui pouvait sembler donner des
+// résultats imprévisibles. Les groupes de code postal sont ensuite ordonnés
+// par proximité à la base (départ), et remplissent les paquets dans cet
+// ordre : un groupe reste entièrement contigu dans un même paquet sauf s'il
+// dépasse maxPerDay à lui seul (auquel cas il continue sur le paquet
+// suivant), et le reste de place d'un paquet est comblé par le groupe de
+// code postal suivant le plus proche plutôt que laissé vide.
 export function clusterByProximity(items, maxPerDay, base) {
   const byRegion = new Map();
   for (const item of items) {
@@ -47,39 +44,32 @@ export function clusterByProximity(items, maxPerDay, base) {
 
   const clusters = [];
   for (const [, regionItems] of byRegion) {
-    const remaining = [...regionItems];
-    while (remaining.length > 0) {
-      // Amorce le paquet avec le client le plus proche de la base (point de
-      // départ le plus logique pour une tournée).
-      let seedIdx = 0;
-      let seedDist = Infinity;
-      for (let i = 0; i < remaining.length; i++) {
-        const d = distanceBetween(base, remaining[i], base);
-        if (d < seedDist) {
-          seedDist = d;
-          seedIdx = i;
-        }
-      }
-      const cluster = remaining.splice(seedIdx, 1);
-
-      while (cluster.length < maxPerDay && remaining.length > 0) {
-        let bestIdx = -1;
-        let bestDist = Infinity;
-        for (let i = 0; i < remaining.length; i++) {
-          for (const member of cluster) {
-            const d = distanceBetween(member, remaining[i], base);
-            if (d < bestDist) {
-              bestDist = d;
-              bestIdx = i;
-            }
-          }
-        }
-        if (bestIdx === -1 || bestDist > MAX_JUMP_KM) break;
-        const [next] = remaining.splice(bestIdx, 1);
-        cluster.push(next);
-      }
-      clusters.push(cluster);
+    const byPostal = new Map();
+    for (const item of regionItems) {
+      const code = item.postalCode || "";
+      if (!byPostal.has(code)) byPostal.set(code, []);
+      byPostal.get(code).push(item);
     }
+    const postalGroups = [...byPostal.values()]
+      .map((groupItems) => ({
+        items: groupItems,
+        dist: Math.min(...groupItems.map((it) => distanceBetween(base, it, base))),
+      }))
+      .sort((a, b) => a.dist - b.dist);
+
+    let cluster = [];
+    for (const group of postalGroups) {
+      const remaining = [...group.items];
+      while (remaining.length > 0) {
+        if (cluster.length >= maxPerDay) {
+          clusters.push(cluster);
+          cluster = [];
+        }
+        const take = remaining.splice(0, maxPerDay - cluster.length);
+        cluster.push(...take);
+      }
+    }
+    if (cluster.length > 0) clusters.push(cluster);
   }
   return clusters;
 }
